@@ -39,53 +39,59 @@ Methods ==
 Transitions ==
   (*************************************************************************)
   (* The set of all valid StorageMiner state transitions.                  *)
+  (* - `method`: the Actor method called                                   *)
+  (* - `state`: the sector state at the beginning of the call              *)
+  (* - `stateNext`: the sector state at the end of the call                *)
+  (* - `decl`: the state of the declaration of a sector at the beginning   *)
+  (*    of the call                                                        *)
+  (* - `declNext`: the state of the declaration at the end of the call     *)
+  (* - `penalties`: the penalty paid by the end of the call                *)
   (*************************************************************************)
   {
-    \* Precommit: A clear sector is precommitted (clear ->  precommit)
+    (* Precommit: A clear sector is precommitted (clear ->  precommit)     *)
     [method |-> "PreCommit",       state |-> "clear",      stateNext |-> "precommit",  decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
 
-    \* Commit: A precommitted sector becomes active (precommit -> active)
+    (* Commit: A precommitted sector becomes active (precommit -> active)  *)
     [method |-> "Commit",          state |-> "precommit",  stateNext |-> "active",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
 
-    \* WindowPoSt
-    \* - honest: An active sector remains active
+    (* WindowPoSt                                                          *)
+    (* - honest: An active sector remains active                           *)
     [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
-    \* - continued faults: A faulty sector remains faulty
+    (* - continued faults: A faulty sector remains faulty                  *)
     [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> FF],
-    \*     - with termination: if faulty for too long, it's terminated
+    (*     - with termination: if faulty for too long, it's terminated     *)
     [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> TF],
-    \* - new declared faults: An active sector that is declared faulted becomes faulty
+    (* - new declared faults: An active sector that is declared faulted    *)
+    (*   becomes faulty                                                    *)
     [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> "faulty",     decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
-    \* - skipped faults: An active sector not declared faulty that fails post becomes faulty
+    (* - skipped faults: An active sector not declared faulty that fails   *)
+    (*   post becomes faulty                                               *)
     [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> "faulty",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> SP],
-    \* - recovered: An faulty sector that is declared recovered becomes active
+    (* - recovered: An faulty sector that is declared recovered becomes    *)
+    (*   active                                                            *)
     [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "active",     decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> ZERO],
-    \* - failed recovery: A faulty sector that is claimed recovered but fails post is penalized as skipped fault 
+    (* - failed recovery: A faulty sector that is claimed recovered but    *)
+    (*   fails post is penalized as skipped fault                          *)
     [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> SP],
-    \*     - with termination: if faulty for too long, it's terminated
+    (*     - with termination: if faulty for too long, it's terminated     *)
     [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> TF],
-    \* - recovered fault reported faulty again: A faulty sector is declared faulted (from a previous recovery)
+    (* - recovered fault reported faulty again: A faulty sector is         *)
+    (*   declared faulted (from a previous recovery)                       *)
     [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
-    \*     - with termination: if faulty for too long, it's terminated
+    (*     - with termination: if faulty for too long, it's terminated     *)
     [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> TF],
 
-    \* DeclareFaults
-    \* - active is now faulted: An active sector is declared as faulted
+    (* DeclareFaults                                                       *)
+    (* - active is now faulted: An active sector is declared as faulted    *)
     [method |-> "DeclareFault",    state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "faulted",   penalties |-> ZERO],
-    \* - recovered is now faulted: A faulty sector is declared faulted again (from a previous recovery)
+    (* - recovered is now faulted: A faulty sector is declared faulted     *)
+    (* again (from a previous recovery)                                    *)
     [method |-> "DeclareFault",    state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  "faulted",   penalties |-> ZERO],
 
-    \* DeclareRecovery
-    \* - faulty is now recovered: A faulty sector is declared recovered
+    (* DeclareRecovery                                                     *)
+    (* - faulty is now recovered: A faulty sector is declared recovered    *)
     [method |-> "DeclareRecovery", state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "recovered", penalties |-> ZERO]
   }
-  \* `Transition` - All valid transitions for the storage Miner
-  \* - `method`: the Actor method called 
-  \* - `state`: the sector state at the beginning of the call
-  \* - `stateNext`: the sector state at the end of the call
-  \* - `decl`: the state of the declaration of a sector at the beginning of the call
-  \* - `declNext`: the state of the declaration at the end of the call
-  \* - `penalties`: the penalty paid by the end of the call
 
 StateTransitions ==
   (*************************************************************************)
