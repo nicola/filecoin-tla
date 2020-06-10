@@ -405,134 +405,132 @@ end define;
 fair+ process miner = "miner"
 variables epoch = 0
 begin
-    \* Blockchain - This is the blockchain utility and runs multiple epochs
-    \* At each epoch, we execute a block and in each block we execute one
-    \* method call
-    Blockchain:
-        while epoch < 6 do
-            epoch := epoch + 1;
-            Block:
-                either
-                    PreCommit:
-                        methodCalled := "PreCommit";
-                        if /\ sectorState = "clear"
-                           /\ declaration = NULLDECL then
-                            \* Mark sector as committed
-                            sectorStateNext := "precommit";
-                        else
-                            sectorStateError := "invalid precommit";
-                        end if;
-                or
-                    Commit:
-                        methodCalled := "Commit";
-                        if /\ sectorState = "precommit"
-                           /\ declaration = NULLDECL then
-                            \* Mark sector as active
-                            sectorStateNext := "active";
-                        else
-                            sectorStateError := "invalid commit";
-                        end if;   
-                or
-                    DeclareFault:
-                        methodCalled := "DeclareFault";
-                        \* Declare active sector as faulted
-                        if sectorState = "active" /\ declaration = NULLDECL then
-                            declarationNext := "faulted";
-                        \* Declare recovered faulty sector as faulted
-                        elsif sectorState = "faulty" /\ declaration = "recovered" then
-                            declarationNext := "faulted";                            
-                        else
-                            sectorStateError := "invalid declare fault";
-                        end if;
-                or
-                    DeclareRecovery:
-                        methodCalled := "DeclareRecovery";
-                        if sectorState = "faulty" /\ declaration = NULLDECL then
-                            declarationNext := "recovered";
-                        else
-                            sectorStateError := "invalid declare recovery";
-                        end if;
-                or
-                    WindowPoSt:
-                        methodCalled := "WindowPoSt";
-                        if \/ (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" })
-                           \/ sectorState = "faulty" then
+  \* Blockchain - This is the blockchain utility and runs multiple epochs
+  \* At each epoch, we execute a block and in each block we execute one
+  \* method call
+  Blockchain:
+    while epoch < 6 do
+      epoch := epoch + 1;
+      Block:
+        either
+          PreCommit:
+            methodCalled := "PreCommit";
+            if sectorState = "clear" /\ declaration = NULLDECL then
+              \* Mark sector as committed
+              sectorStateNext := "precommit";
+            else
+              sectorStateError := "invalid precommit";
+            end if;
+        or
+          Commit:
+            methodCalled := "Commit";
+            if sectorState = "precommit" /\ declaration = NULLDECL then
+              \* Mark sector as active
+              sectorStateNext := "active";
+            else
+              sectorStateError := "invalid commit";
+            end if;   
+        or
+          DeclareFault:
+            methodCalled := "DeclareFault";
+            \* Declare active sector as faulted
+            if sectorState = "active" /\ declaration = NULLDECL then
+              declarationNext := "faulted";
+            \* Declare recovered faulty sector as faulted
+            elsif sectorState = "faulty" /\ declaration = "recovered" then
+              declarationNext := "faulted";                            
+            else
+              sectorStateError := "invalid declare fault";
+            end if;
+        or
+          DeclareRecovery:
+            methodCalled := "DeclareRecovery";
+            if sectorState = "faulty" /\ declaration = NULLDECL then
+              declarationNext := "recovered";
+            else
+              sectorStateError := "invalid declare recovery";
+            end if;
+        or
+          WindowPoSt:
+            methodCalled := "WindowPoSt";
+            if \/ (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" })
+               \/ sectorState = "faulty" then
 
-                            \* - skipped faults
-                            \* - failed recovery
-                            if RecoveredSector then
-                                sectorStateNext := "active";
-                            elsif SkippedFault then
-                                if sectorState = "active" then
-                                    sectorStateNext := "faulty";
-                                end if;
-                                penalties := SP;
+              \* - skipped faults
+              \* - failed recovery
+              if RecoveredSector then
+                sectorStateNext := "active";
 
-                            \* - continued faults
-                            \* - recovered fault reported faulty again
-                            \* - new declared faults
-                            elsif DeclaredFault then
-                                if sectorState = "active" then
-                                    sectorStateNext := "faulty";
-                                end if;
-                                penalties := FF;
-                            \* - recovered
-                            end if;
+              elsif SkippedFault then
+                if sectorState = "active" then
+                  sectorStateNext := "faulty";
+                end if;
+                penalties := SP;
 
-                            \* Update faults counter when the sector is faulty
-                            \* either the sector is faulty already
-                            \*     or the sector is found to be faulty
-                            if /\ sectorState = "faulty"
-                               /\ sectorStateNext \in {NULLSTATE, "faulty"} then
-                                failedPoSts := failedPoSts + 1;
-                            else
-                                failedPoSts := 0;
-                            end if;
+              \* - continued faults
+              \* - recovered fault reported faulty again
+              \* - new declared faults
+              elsif DeclaredFault then
+                if sectorState = "active" then
+                  sectorStateNext := "faulty";
+                end if;
+                penalties := FF;
+              \* - recovered
+              end if;
 
-                            \* Apply penalties
-                            ApplyPenalty:
-                                if failedPoSts >= 3 then
-                                    penalties := TF;
-                                    sectorStateNext := "done";
-                                end if;
-                        else
-                            sectorStateError := "invalid window post";
-                        end if;
-                        \* Termination
+              \* Update faults counter when the sector is faulty
+              \* either the sector is faulty already
+              \*     or the sector is found to be faulty
+              if /\ sectorState = "faulty"
+                 /\ sectorStateNext \in {NULLSTATE, "faulty"} then
+                failedPoSts := failedPoSts + 1;
+              else
+                failedPoSts := 0;
+              end if;
 
-                end either;
+              \* Apply penalties
+              ApplyPenalty:
+                if failedPoSts >= 3 then
+                  penalties := TF;
+                  sectorStateNext := "done";
+                end if;
+            else
+              sectorStateError := "invalid window post";
+            end if;
+            \* TODO: Handle honest termination
 
-                \* Reset to initial conditions
-                End:
-                    if sectorStateNext /= NULLSTATE then
-                        sectorState := sectorStateNext;
-                    end if;
+        end either;
 
-                    if methodCalled = "WindowPoSt" then
-                        declaration := NULLDECL;
-                    else
-                        declaration := declarationNext;
-                    end if;
-                    if sectorState = "clear" then
-                        failedPoSts := 0;
-                    end if;
-                    methodCalled := NULLMETHOD;
-                    declarationNext := NULLDECL;
-                    sectorStateNext := NULLSTATE;
-                    penalties := ZERO;
-                    sectorStateError := NOERROR;
-                    with x \in BOOLEAN  do
-                        skippedFault := x;
-                    end with; 
-                    
-                    
-        end while;
+        \* Reset to initial conditions
+        End:
+          if sectorStateNext /= NULLSTATE then
+            sectorState := sectorStateNext;
+          end if;
+
+          if methodCalled = "WindowPoSt" then
+            declaration := NULLDECL;
+          else
+            declaration := declarationNext;
+          end if;
+          if sectorState = "clear" then
+            failedPoSts := 0;
+          end if;
+          methodCalled := NULLMETHOD;
+          declarationNext := NULLDECL;
+          sectorStateNext := NULLSTATE;
+          penalties := ZERO;
+          sectorStateError := NOERROR;
+          with x \in BOOLEAN  do
+            skippedFault := x;
+          end with; 
+
+    end while;
 end process;
 
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-a62d67c1cf452e4553fd98b783926fd4
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-e5c870ed62a7c80dd62262399543737f
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -684,8 +682,7 @@ Block == /\ pc["miner"] = "Block"
 
 PreCommit == /\ pc["miner"] = "PreCommit"
              /\ methodCalled' = "PreCommit"
-             /\ IF /\ sectorState = "clear"
-                   /\ declaration = NULLDECL
+             /\ IF sectorState = "clear" /\ declaration = NULLDECL
                    THEN /\ sectorStateNext' = "precommit"
                         /\ UNCHANGED sectorStateError
                    ELSE /\ sectorStateError' = "invalid precommit"
@@ -696,8 +693,7 @@ PreCommit == /\ pc["miner"] = "PreCommit"
 
 Commit == /\ pc["miner"] = "Commit"
           /\ methodCalled' = "Commit"
-          /\ IF /\ sectorState = "precommit"
-                /\ declaration = NULLDECL
+          /\ IF sectorState = "precommit" /\ declaration = NULLDECL
                 THEN /\ sectorStateNext' = "active"
                      /\ UNCHANGED sectorStateError
                 ELSE /\ sectorStateError' = "invalid commit"
@@ -814,5 +810,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-7aae4b1e0d124f752372bc3aa0262a43
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-b38dc23eb582d9e816708183e77510cf
 ====
