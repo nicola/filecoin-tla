@@ -239,6 +239,18 @@ Transitions ==
       penalties |-> ZERO
     ]
   }
+  \union
+    (***********************************************************************)
+    (* TerminateSector: (faulty or active) -> (done)                       *)
+    (***********************************************************************)
+  [
+      method: {"TerminateSector"},
+      state: {"faulty", "active"},
+      stateNext: {"done"},
+      decl: {"faulted", "recovered", NULLDECL},
+      declNext: {NULLDECL},
+      penalties: {TF}
+    ]
 
 StateTransitions ==
   (*************************************************************************)
@@ -451,6 +463,16 @@ begin
               sectorStateError := "invalid declare recovery";
             end if;
         or
+          TerminateSector:
+            methodCalled := "TerminateSector";
+            if /\ sectorState \in {"faulty", "active"}
+               /\ declaration \in {"faulted", "recovered", NULLDECL} then
+              sectorStateNext := "done";
+              penalties := TF;
+            else
+              sectorStateError := "invalid declare recovery";
+            end if;
+        or
           WindowPoSt:
             methodCalled := "WindowPoSt";
             if \/ (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" })
@@ -512,7 +534,7 @@ begin
           else
             declaration := declarationNext;
           end if;
-          if sectorState = "clear" then
+          if sectorState = "clear" /\ sectorState = "done" then
             failedPoSts := 0;
           end if;
           methodCalled := NULLMETHOD;
@@ -530,7 +552,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-e5c870ed62a7c80dd62262399543737f
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-c84f43346590f6120692a11779ec110e
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -675,6 +697,7 @@ Block == /\ pc["miner"] = "Block"
             \/ /\ pc' = [pc EXCEPT !["miner"] = "Commit"]
             \/ /\ pc' = [pc EXCEPT !["miner"] = "DeclareFault"]
             \/ /\ pc' = [pc EXCEPT !["miner"] = "DeclareRecovery"]
+            \/ /\ pc' = [pc EXCEPT !["miner"] = "TerminateSector"]
             \/ /\ pc' = [pc EXCEPT !["miner"] = "WindowPoSt"]
          /\ UNCHANGED << sectorState, sectorStateNext, sectorStateError, 
                          declaration, declarationNext, failedPoSts, 
@@ -726,6 +749,19 @@ DeclareRecovery == /\ pc["miner"] = "DeclareRecovery"
                    /\ pc' = [pc EXCEPT !["miner"] = "End"]
                    /\ UNCHANGED << sectorState, sectorStateNext, declaration, 
                                    failedPoSts, skippedFault, penalties, epoch >>
+
+TerminateSector == /\ pc["miner"] = "TerminateSector"
+                   /\ methodCalled' = "TerminateSector"
+                   /\ IF /\ sectorState \in {"faulty", "active"}
+                         /\ declaration \in {"faulted", "recovered", NULLDECL}
+                         THEN /\ sectorStateNext' = "done"
+                              /\ penalties' = TF
+                              /\ UNCHANGED sectorStateError
+                         ELSE /\ sectorStateError' = "invalid declare recovery"
+                              /\ UNCHANGED << sectorStateNext, penalties >>
+                   /\ pc' = [pc EXCEPT !["miner"] = "End"]
+                   /\ UNCHANGED << sectorState, declaration, declarationNext, 
+                                   failedPoSts, skippedFault, epoch >>
 
 WindowPoSt == /\ pc["miner"] = "WindowPoSt"
               /\ methodCalled' = "WindowPoSt"
@@ -781,7 +817,7 @@ End == /\ pc["miner"] = "End"
        /\ IF methodCalled = "WindowPoSt"
              THEN /\ declaration' = NULLDECL
              ELSE /\ declaration' = declarationNext
-       /\ IF sectorState' = "clear"
+       /\ IF sectorState' = "clear" /\ sectorState' = "done"
              THEN /\ failedPoSts' = 0
              ELSE /\ TRUE
                   /\ UNCHANGED failedPoSts
@@ -796,7 +832,8 @@ End == /\ pc["miner"] = "End"
        /\ epoch' = epoch
 
 miner == Blockchain \/ Block \/ PreCommit \/ Commit \/ DeclareFault
-            \/ DeclareRecovery \/ WindowPoSt \/ ApplyPenalty \/ End
+            \/ DeclareRecovery \/ TerminateSector \/ WindowPoSt
+            \/ ApplyPenalty \/ End
 
 (* Allow infinite stuttering to prevent deadlock on termination. *)
 Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
@@ -810,5 +847,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-b38dc23eb582d9e816708183e77510cf
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-9ee1dba48bc3958b998d43221a52117c
 ====
