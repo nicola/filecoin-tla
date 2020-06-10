@@ -149,7 +149,7 @@ begin
     \* At each epoch, we execute a block and in each block we execute one
     \* method call
     Blockchain:
-        while epoch < 5 do
+        while epoch < 6 do
             epoch := epoch + 1;
             Block:
                 either
@@ -219,7 +219,7 @@ begin
                             \* Update faults counter when the sector is faulty
                             \* either the sector is faulty already
                             \*     or the sector is found to be faulty
-                            if sectorStateNext /= "active" /\ (DeclareFault \/ SkippedFault) then
+                            if sectorState = "faulty" /\ sectorStateNext \in {NULLSTATE, "faulty"} then
                                 failedPoSts := failedPoSts + 1;
                             else
                                 failedPoSts := 0;
@@ -227,7 +227,7 @@ begin
 
                             \* Apply penalties
                             ApplyPenalty:
-                                if failedPoSts > 3 then
+                                if failedPoSts >= 3 then
                                     penalties := TF;
                                     sectorStateNext := "done";
                                 end if;
@@ -249,6 +249,9 @@ begin
                     else
                         declaration := declarationNext;
                     end if;
+                    if sectorState = "clear" then
+                        failedPoSts := 0;
+                    end if;
                     methodCalled := NULLMETHOD;
                     declarationNext := NULLDECL;
                     sectorStateNext := NULLSTATE;
@@ -265,7 +268,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-143c3bd8938b9634ebb7962318db2193
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-a9d79f98eda2aa60496167e98fdb7c24
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -340,7 +343,7 @@ Init == (* Global variables *)
         /\ pc = [self \in ProcSet |-> "Blockchain"]
 
 Blockchain == /\ pc["miner"] = "Blockchain"
-              /\ IF epoch < 5
+              /\ IF epoch < 6
                     THEN /\ epoch' = epoch + 1
                          /\ pc' = [pc EXCEPT !["miner"] = "Block"]
                     ELSE /\ pc' = [pc EXCEPT !["miner"] = "Done"]
@@ -427,7 +430,7 @@ WindowPoSt == /\ pc["miner"] = "WindowPoSt"
                                                      ELSE /\ TRUE
                                                           /\ UNCHANGED << sectorStateNext, 
                                                                           penalties >>
-                         /\ IF sectorStateNext' /= "active" /\ (DeclareFault \/ SkippedFault)
+                         /\ IF sectorState = "faulty" /\ sectorStateNext' \in {NULLSTATE, "faulty"}
                                THEN /\ failedPoSts' = failedPoSts + 1
                                ELSE /\ failedPoSts' = 0
                          /\ pc' = [pc EXCEPT !["miner"] = "ApplyPenalty"]
@@ -440,7 +443,7 @@ WindowPoSt == /\ pc["miner"] = "WindowPoSt"
                               skippedFault, epoch >>
 
 ApplyPenalty == /\ pc["miner"] = "ApplyPenalty"
-                /\ IF failedPoSts > 3
+                /\ IF failedPoSts >= 3
                       THEN /\ penalties' = TF
                            /\ sectorStateNext' = "done"
                       ELSE /\ TRUE
@@ -458,6 +461,10 @@ End == /\ pc["miner"] = "End"
        /\ IF methodCalled = "WindowPoSt"
              THEN /\ declaration' = NULLDECL
              ELSE /\ declaration' = declarationNext
+       /\ IF sectorState' = "clear"
+             THEN /\ failedPoSts' = 0
+             ELSE /\ TRUE
+                  /\ UNCHANGED failedPoSts
        /\ methodCalled' = NULLMETHOD
        /\ declarationNext' = NULLDECL
        /\ sectorStateNext' = NULLSTATE
@@ -466,7 +473,7 @@ End == /\ pc["miner"] = "End"
        /\ \E x \in BOOLEAN:
             skippedFault' = x
        /\ pc' = [pc EXCEPT !["miner"] = "Blockchain"]
-       /\ UNCHANGED << failedPoSts, epoch >>
+       /\ epoch' = epoch
 
 miner == Blockchain \/ Block \/ PreCommit \/ Commit \/ DeclareFault
             \/ DeclareRecovery \/ WindowPoSt \/ ApplyPenalty \/ End
@@ -483,5 +490,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-fb7983c311362fab4f28c039a599a8e1
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-018fb0573716962ae6045660f1fb10cb
 ====
