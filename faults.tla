@@ -18,67 +18,89 @@ SectorStates == { "precommit", "active", "faulty", "clear" }
 Declarations == { "faulted", "recovered" }
 Methods == {"PreCommit", "Commit", "WindowPoSt", "DeclareFault", "DeclareRecovery"}
 
-States == {
-    \* Precommit
-    [method |-> "PreCommit",    state |-> "clear",      stateNext |-> "precommit",  decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
+\* `Transition` - All valid transitions for the storage Miner
+\* - `method`: the Actor method called 
+\* - `state`: the sector state at the beginning of the call
+\* - `stateNext`: the sector state at the end of the call
+\* - `decl`: the state of the declaration of a sector at the beginning of the call
+\* - `declNext`: the state of the declaration at the end of the call
+\* - `penalties`: the penalty paid by the end of the call
+Transitions == {
+    \* Precommit: A clear sector is precommitted (clear ->  precommit)
+    [method |-> "PreCommit",       state |-> "clear",      stateNext |-> "precommit",  decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
 
-    \* Commit
-    [method |-> "Commit",       state |-> "precommit",  stateNext |-> "active",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
+    \* Commit: A precommitted sector becomes active (precommit -> active)
+    [method |-> "Commit",          state |-> "precommit",  stateNext |-> "active",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
 
     \* WindowPoSt
-    \* - honest
-    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
-    \* - continued faults
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> FF],
-    \*     - with termination
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "done",    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> TF],
-    \* - new declared faults
-    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> "faulty",     decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
-    \* - skipped faults
-    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> "faulty",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> SP],
-    \* - recovered
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "active",     decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> ZERO],
-    \* - failed recovery
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> SP],
-    \*     - with termination
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "done",    decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> TF],
-    \* - recovered fault reported faulty again
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
-    \*     - with termination
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "done",    decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> TF],
+    \* - honest: An active sector remains active
+    [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
+    \* - continued faults: A faulty sector remains faulty
+    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> FF],
+    \*     - with termination: if faulty for too long, it's terminated
+    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> TF],
+    \* - new declared faults: An active sector that is declared faulted becomes faulty
+    [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> "faulty",     decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
+    \* - skipped faults: An active sector not declared faulty that fails post becomes faulty
+    [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> "faulty",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> SP],
+    \* - recovered: An faulty sector that is declared recovered becomes active
+    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "active",     decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> ZERO],
+    \* - failed recovery: A faulty sector that is claimed recovered but fails post is penalized as skipped fault 
+    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> SP],
+    \*     - with termination: if faulty for too long, it's terminated
+    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> TF],
+    \* - recovered fault reported faulty again: A faulty sector is declared faulted (from a previous recovery)
+    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
+    \*     - with termination: if faulty for too long, it's terminated
+    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> TF],
 
     \* DeclareFaults
-    \* - active is now faulted
-    [method |-> "DeclareFault", state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "faulted",   penalties |-> ZERO],
-    \* - recovered is now faulted
-    [method |-> "DeclareFault", state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  "faulted",   penalties |-> ZERO],
+    \* - active is now faulted: An active sector is declared as faulted
+    [method |-> "DeclareFault",    state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "faulted",   penalties |-> ZERO],
+    \* - recovered is now faulted: A faulty sector is declared faulted again (from a previous recovery)
+    [method |-> "DeclareFault",    state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  "faulted",   penalties |-> ZERO],
 
     \* DeclareRecovery
-    \* - faulty is now recovered
-    [method |-> "DeclareRecovery", state |-> "faulty",  stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "recovered", penalties |-> ZERO]
+    \* - faulty is now recovered: A faulty sector is declared recovered
+    [method |-> "DeclareRecovery", state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "recovered", penalties |-> ZERO]
 }
 
-Transitions == { <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> : x \in States }
+\* StateTransitions - Same as Transitions without penalties
+StateTransitions == { <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> : x \in Transitions }
 
 (*--algorithm faults
 variables
+    \* sector state before a method call
     sectorState \in SectorStates,
+    \* sector state at the end of a method call
     sectorStateNext = NULLSTATE,
+    \* error from an invalid sector state transition
     sectorStateError = NOERROR,
     
+    \* declaration before a method call
     declaration = NULLDECL,
+    \* declaration after a method call
     declarationNext = NULLDECL,
     
-    failedPoSts \in 1..2,
+    \* consecutive posts failed so far
+    failedPoSts \in 0..2,
+    \* decide whether a fault is being skipped or not
     skippedFault \in BOOLEAN,
+    \* penalties to be paid by the end of the method call
     penalties = ZERO,
     
+    \* last method called
     methodCalled = NULLMETHOD;
 
 define
+    \* MessageExecuted - True when we reach end of method call
     MessageExecuted == pc["miner"] = "End"
+
+    \* NoErrors - True when no error
     NoErrors == sectorStateError = NOERROR
-    PackState(method, state, stateNext, decl, declNext, pen) == [
+
+    \* PackTransition - Utility to pack variables into a struct
+    PackTransition(method, state, stateNext, decl, declNext, pen) == [
         method |-> method,
         state |-> state,
         stateNext |-> stateNext,
@@ -87,22 +109,35 @@ define
         penalties |-> pen
     ]
 
+    \* INVARIANTS
+
+    \* MessageInvariants - All messages are valid or faults are reported
     MessageInvariants == LET
-        ValidMessage == <<methodCalled, sectorState, sectorStateNext, declaration, declarationNext>> \in Transitions
+        ValidMessage == <<methodCalled, sectorState, sectorStateNext, declaration, declarationNext>> \in StateTransitions
         ValidMessageNoError ==  ValidMessage /\ NoErrors
         InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
     IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
 
+    \* PenaltyInvariants - If there are no errors, penalties must be set correctly
     PenaltiesInvariants == LET
-        ValidPenalty == PackState(methodCalled, sectorState, sectorStateNext, declaration, declarationNext, penalties) \in States
+        ValidPenalty == PackTransition(methodCalled, sectorState, sectorStateNext, declaration, declarationNext, penalties) \in Transitions
     IN MessageExecuted /\ NoErrors => ValidPenalty
 
+    \* Faults utility
+
+    \* ExpectingProof - WindowPoSt expects a sector proof
     ExpectingProof == (sectorState = "active" /\ declaration = NULLDECL) \/ (sectorState = "faulty" /\ declaration = "recovered")
+    \* SkippedFault - WindowPoSt expected a proof that did not appear/faulty
     SkippedFault == ExpectingProof /\ skippedFault
-    FailedRecoveryDeclaredFault == sectorState = "faulty" \/ declaration = "faulted"
+    \* FailedRecoveryDeclaredFault - A faulty sector is still declared faulty (after being recovered)
+    FailedRecoveryDeclaredFault == sectorState = "faulty" /\ declaration = "faulted"
+    \* ContinuedDeclaredFault - A sector is faulty and continues being so
     ContinuedDeclaredFault == sectorState = "faulty" /\ declaration = NULLDECL
+    \* NewDeclaredFault - A sector is active and declared as faulty
     NewDeclaredFault == sectorState = "active" /\ declaration = "faulted"
+    \* DeclaredFault - A sector is declared as faulty
     DeclaredFault == FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
+    \* RecoveredFault - A sector is recovered
     RecoveredFault == sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
 
 end define;
@@ -110,6 +145,9 @@ end define;
 fair+ process miner = "miner"
 variables epoch = 0
 begin
+    \* Blockchain - This is the blockchain utility and runs multiple epochs
+    \* At each epoch, we execute a block and in each block we execute one
+    \* method call
     Blockchain:
         while epoch < 5 do
             epoch := epoch + 1;
@@ -199,6 +237,8 @@ begin
                         \* Termination
 
                 end either;
+
+                \* Reset to initial conditions
                 End:
                     if sectorStateNext /= NULLSTATE then
                         sectorState := sectorStateNext;
@@ -225,15 +265,19 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-f314d3c8662aa26f62b7d61fda6ee8f2
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-143c3bd8938b9634ebb7962318db2193
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
 
 (* define statement *)
 MessageExecuted == pc["miner"] = "End"
+
+
 NoErrors == sectorStateError = NOERROR
-PackState(method, state, stateNext, decl, declNext, pen) == [
+
+
+PackTransition(method, state, stateNext, decl, declNext, pen) == [
     method |-> method,
     state |-> state,
     stateNext |-> stateNext,
@@ -242,22 +286,35 @@ PackState(method, state, stateNext, decl, declNext, pen) == [
     penalties |-> pen
 ]
 
+
+
+
 MessageInvariants == LET
-    ValidMessage == <<methodCalled, sectorState, sectorStateNext, declaration, declarationNext>> \in Transitions
+    ValidMessage == <<methodCalled, sectorState, sectorStateNext, declaration, declarationNext>> \in StateTransitions
     ValidMessageNoError ==  ValidMessage /\ NoErrors
     InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
 IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
 
+
 PenaltiesInvariants == LET
-    ValidPenalty == PackState(methodCalled, sectorState, sectorStateNext, declaration, declarationNext, penalties) \in States
+    ValidPenalty == PackTransition(methodCalled, sectorState, sectorStateNext, declaration, declarationNext, penalties) \in Transitions
 IN MessageExecuted /\ NoErrors => ValidPenalty
 
+
+
+
 ExpectingProof == (sectorState = "active" /\ declaration = NULLDECL) \/ (sectorState = "faulty" /\ declaration = "recovered")
+
 SkippedFault == ExpectingProof /\ skippedFault
-FailedRecoveryDeclaredFault == sectorState = "faulty" \/ declaration = "faulted"
+
+FailedRecoveryDeclaredFault == sectorState = "faulty" /\ declaration = "faulted"
+
 ContinuedDeclaredFault == sectorState = "faulty" /\ declaration = NULLDECL
+
 NewDeclaredFault == sectorState = "active" /\ declaration = "faulted"
+
 DeclaredFault == FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
+
 RecoveredFault == sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
 
 VARIABLE epoch
@@ -274,7 +331,7 @@ Init == (* Global variables *)
         /\ sectorStateError = NOERROR
         /\ declaration = NULLDECL
         /\ declarationNext = NULLDECL
-        /\ failedPoSts \in 1..2
+        /\ failedPoSts \in 0..2
         /\ skippedFault \in BOOLEAN
         /\ penalties = ZERO
         /\ methodCalled = NULLMETHOD
@@ -426,5 +483,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-a52d62fa38c46a6e542f85a723df7f24
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-fb7983c311362fab4f28c039a599a8e1
 ====
