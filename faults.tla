@@ -51,7 +51,7 @@ Transitions ==
   (*************************************************************************)
   {
     (***********************************************************************)
-    (* Precommit: A clear sector is precommitted (clear ->  precommit)     *)
+    (* Precommit: A clear sector is precommitted (clear ->  precommit).    *)
     (***********************************************************************)
     [
       method |-> "PreCommit",
@@ -63,7 +63,7 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* Commit: A precommitted sector becomes active (precommit -> active)  *)
+    (* Commit: A precommitted sector becomes active (precommit -> active). *)
     (***********************************************************************)
     [
       method |-> "Commit",          
@@ -75,8 +75,8 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* WindowPoSt                                                          *)
-    (* - honest: An active sector remains active                           *)
+    (* WindowPoSt: Honest case                                             *)
+    (* An active sector remains active.                                    *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -87,8 +87,10 @@ Transitions ==
       penalties |-> ZERO
     ],
 
+    
     (***********************************************************************)
-    (* - continued faults: A faulty sector remains faulty                  *)
+    (* WindowPoSt: Continued Fault                                         *)
+    (* A faulty sector remains faulty in absence of declarations.          *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -100,7 +102,8 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (*     - with termination: if faulty for too long, it's terminated     *)
+    (* WindowPoSt: Continued Fault (Termination Fault version)             *)
+    (* Same as Continued fault, sector is terminated.                      *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -112,8 +115,8 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* - new declared faults: An active sector that is declared faulted    *)
-    (*   becomes faulty                                                    *)
+    (* WindowPoSt: New Declared Fault                                      *)
+    (* An active sector that is declared faulted becomes faulty.           *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -125,8 +128,8 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* - skipped faults: An active sector not declared faulty that fails   *)
-    (*   post becomes faulty                                               *)
+    (* WindowPoSt: Active Skipped Faults                                   *)
+    (* An active sector that is not declared faulted becomes faulty.       *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -138,8 +141,8 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* - recovered: An faulty sector that is declared recovered becomes    *)
-    (*   active                                                            *)
+    (* WindowPoSt: Recovered Sector                                        *)
+    (* A faulty sector declared as recovered becomes active.               *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -151,8 +154,9 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* - failed recovery: A faulty sector that is claimed recovered but    *)
-    (*   fails post is penalized as skipped fault                          *)
+    (* WindowPoSt: Recovered Skipped Fault                                 *)
+    (* A faulty sector is declared recovered and then fails the proof      *)
+    (* becomes faulty.                                                     *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -164,7 +168,8 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (*     - with termination: if faulty for too long, it's terminated     *)
+    (* WindowPoSt: Recovered Skipped Fault (Termination Fault version)     *)
+    (* Same as Recovered Skipped Fault, sector is terminated.              *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -176,8 +181,9 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* - recovered fault reported faulty again: A faulty sector is         *)
-    (*   declared faulted (from a previous recovery)                       *)
+    (* WindowPoSt: Failed Recovery Declared Fault                          *)
+    (* A faulty sector declared as recovered and then declared again as    *)
+    (* faulted becomes faulty                                              *)
     (***********************************************************************)
     [
       method |-> "WindowPoSt",      
@@ -189,8 +195,10 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (*     - with termination: if faulty for too long, it's terminated     *)
+    (* WindowPoSt: Failed Recovery Declared Fault (Termination fault)      *)
+    (* Same as Failed Recovery Declared Fault, sector is terminated.       *)
     (***********************************************************************)
+
     [
       method |-> "WindowPoSt",      
       state |-> "faulty",     
@@ -201,8 +209,8 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* DeclareFaults                                                       *)
-    (* - active is now faulted: An active sector is declared as faulted    *)
+    (* DeclareFault: New Declared Fault                                    *)
+    (* An active sector is declared faulted.                               *)
     (***********************************************************************)
     [
       method |-> "DeclareFault",    
@@ -214,8 +222,9 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* - recovered is now faulted: A faulty sector is declared faulted     *)
-    (* again (from a previous recovery)                                    *)
+    (* DeclareFault: Failed Recovery Declared Fault                        *)
+    (* A faulty sector that is declared as recovered is now redeclared as  *)
+    (* faulty.                                                             *)
     (***********************************************************************)
     [
       method |-> "DeclareFault",    
@@ -227,8 +236,7 @@ Transitions ==
     ],
 
     (***********************************************************************)
-    (* DeclareRecovery                                                     *)
-    (* - faulty is now recovered: A faulty sector is declared recovered    *)
+    (* DeclareRecovery: A faulty sector is marked as recovered.            *)
     (***********************************************************************)
     [
       method |-> "DeclareRecovery", 
@@ -241,7 +249,7 @@ Transitions ==
   }
   \union
     (***********************************************************************)
-    (* TerminateSector: (faulty or active) -> (done)                       *)
+    (* TerminateSector: An active or faulty sector is terminated           *)
     (***********************************************************************)
   [
       method: {"TerminateSector"},
@@ -421,7 +429,7 @@ begin
   \* At each epoch, we execute a block and in each block we execute one
   \* method call
   Blockchain:
-    while epoch < 6 do
+    while epoch < 12 do
       epoch := epoch + 1;
       Block:
         either
@@ -552,7 +560,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-c84f43346590f6120692a11779ec110e
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-7e16b08cedb3497d0add40e73b08bf6e
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -683,7 +691,7 @@ Init == (* Global variables *)
         /\ pc = [self \in ProcSet |-> "Blockchain"]
 
 Blockchain == /\ pc["miner"] = "Blockchain"
-              /\ IF epoch < 6
+              /\ IF epoch < 12
                     THEN /\ epoch' = epoch + 1
                          /\ pc' = [pc EXCEPT !["miner"] = "Block"]
                     ELSE /\ pc' = [pc EXCEPT !["miner"] = "Done"]
@@ -847,5 +855,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-9ee1dba48bc3958b998d43221a52117c
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-32ee105c87b52b8816888b6c42219ba8
 ====
