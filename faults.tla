@@ -16,6 +16,21 @@ NULLSTATE == "null state"
 NULLDECL == "null decl"
 NULLMETHOD == "null method"
 
+Pack(method, state, stateNext, decl, declNext, pen) ==
+  (*************************************************************************)
+  (* Utility that packs a list into a struct.                              *)
+  (*************************************************************************)
+  [
+    method |-> method,
+    state |-> state,
+    stateNext |-> stateNext,
+    decl |-> decl,
+    declNext |-> declNext,
+    penalties |-> pen
+  ]
+T(method, state, stateNext, decl, declNext, pen) ==
+  Pack(method, state, stateNext, decl, declNext, pen)
+
 SectorStates == { "precommit", "active", "faulty", "clear" }
   (*************************************************************************)
   (* The set of all sector states.                                         *)
@@ -53,212 +68,108 @@ Transitions ==
     (***********************************************************************)
     (* Precommit: A clear sector is precommitted (clear ->  precommit).    *)
     (***********************************************************************)
-    [
-      method |-> "PreCommit",
-      state |-> "clear",
-      stateNext |-> "precommit",
-      decl |-> NULLDECL,
-      declNext |->  NULLDECL,
-      penalties |-> ZERO
-    ],
+    T("PreCommit", "clear", "precommit", NULLDECL, NULLDECL, ZERO),
 
     (***********************************************************************)
     (* Commit: A precommitted sector becomes active (precommit -> active). *)
     (***********************************************************************)
-    [
-      method |-> "Commit",          
-      state |-> "precommit",  
-      stateNext |-> "active",     
-      decl |-> NULLDECL,    
-      declNext |->  NULLDECL,    
-      penalties |-> ZERO
-    ],
+    T("Commit", "precommit", "active", NULLDECL, NULLDECL, ZERO),
 
     (***********************************************************************)
     (* WindowPoSt: Honest case                                             *)
     (* An active sector remains active.                                    *)
     (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "active",     
-      stateNext |-> NULLSTATE,    
-      decl |-> NULLDECL,    
-      declNext |->  NULLDECL,    
-      penalties |-> ZERO
-    ],
+    T("WindowPoSt", "active", NULLSTATE, NULLDECL, NULLDECL, ZERO),
 
     
     (***********************************************************************)
     (* WindowPoSt: Continued Fault                                         *)
     (* A faulty sector remains faulty in absence of declarations.          *)
     (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "faulty",     
-      stateNext |-> NULLSTATE,    
-      decl |-> NULLDECL,    
-      declNext |->  NULLDECL,    
-      penalties |-> FF
-    ],
-
-    (***********************************************************************)
-    (* WindowPoSt: Continued Fault (Termination Fault version)             *)
-    (* Same as Continued fault, sector is terminated.                      *)
-    (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "faulty",     
-      stateNext |-> "done",       
-      decl |-> NULLDECL,    
-      declNext |->  NULLDECL,    
-      penalties |-> TF
-    ],
+    T("WindowPoSt", "faulty", NULLSTATE, NULLDECL, NULLDECL, FF),
 
     (***********************************************************************)
     (* WindowPoSt: New Declared Fault                                      *)
     (* An active sector that is declared faulted becomes faulty.           *)
     (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "active",     
-      stateNext |-> "faulty",     
-      decl |-> "faulted",   
-      declNext |->  NULLDECL,    
-      penalties |-> FF
-    ],
+    T("WindowPoSt", "active", "faulty", "faulted", NULLDECL, FF),
 
     (***********************************************************************)
     (* WindowPoSt: Active Skipped Faults                                   *)
     (* An active sector that is not declared faulted becomes faulty.       *)
     (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "active",     
-      stateNext |-> "faulty",     
-      decl |-> NULLDECL,    
-      declNext |->  NULLDECL,    
-      penalties |-> SP
-    ],
+    T("WindowPoSt", "active", "faulty", NULLDECL, NULLDECL, SP),
 
     (***********************************************************************)
     (* WindowPoSt: Recovered Sector                                        *)
     (* A faulty sector declared as recovered becomes active.               *)
     (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "faulty",     
-      stateNext |-> "active",     
-      decl |-> "recovered", 
-      declNext |->  NULLDECL,    
-      penalties |-> ZERO
-    ],
+    T("WindowPoSt", "faulty", "active", "recovered", NULLDECL, ZERO),
 
     (***********************************************************************)
     (* WindowPoSt: Recovered Skipped Fault                                 *)
     (* A faulty sector is declared recovered and then fails the proof      *)
     (* becomes faulty.                                                     *)
     (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "faulty",     
-      stateNext |-> NULLSTATE,    
-      decl |-> "recovered", 
-      declNext |->  NULLDECL,    
-      penalties |-> SP
-    ],
-
-    (***********************************************************************)
-    (* WindowPoSt: Recovered Skipped Fault (Termination Fault version)     *)
-    (* Same as Recovered Skipped Fault, sector is terminated.              *)
-    (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "faulty",     
-      stateNext |-> "done",       
-      decl |-> "recovered", 
-      declNext |->  NULLDECL,    
-      penalties |-> TF
-    ],
+    T("WindowPoSt", "faulty", NULLSTATE, "recovered", NULLDECL, SP),
 
     (***********************************************************************)
     (* WindowPoSt: Failed Recovery Declared Fault                          *)
     (* A faulty sector declared as recovered and then declared again as    *)
     (* faulted becomes faulty                                              *)
     (***********************************************************************)
-    [
-      method |-> "WindowPoSt",      
-      state |-> "faulty",     
-      stateNext |-> NULLSTATE,    
-      decl |-> "faulted",   
-      declNext |->  NULLDECL,    
-      penalties |-> FF
-    ],
-
-    (***********************************************************************)
-    (* WindowPoSt: Failed Recovery Declared Fault (Termination fault)      *)
-    (* Same as Failed Recovery Declared Fault, sector is terminated.       *)
-    (***********************************************************************)
-
-    [
-      method |-> "WindowPoSt",      
-      state |-> "faulty",     
-      stateNext |-> "done",       
-      decl |-> "faulted",   
-      declNext |->  NULLDECL,    
-      penalties |-> TF
-    ],
+    T("WindowPoSt", "faulty", NULLSTATE, "faulted", NULLDECL, FF),
 
     (***********************************************************************)
     (* DeclareFault: New Declared Fault                                    *)
     (* An active sector is declared faulted.                               *)
     (***********************************************************************)
-    [
-      method |-> "DeclareFault",    
-      state |-> "active",     
-      stateNext |-> NULLSTATE,    
-      decl |-> NULLDECL,    
-      declNext |->  "faulted",   
-      penalties |-> ZERO
-    ],
+    T("DeclareFault", "active", NULLSTATE, NULLDECL, "faulted", ZERO),
 
     (***********************************************************************)
     (* DeclareFault: Failed Recovery Declared Fault                        *)
     (* A faulty sector that is declared as recovered is now redeclared as  *)
     (* faulty.                                                             *)
     (***********************************************************************)
-    [
-      method |-> "DeclareFault",    
-      state |-> "faulty",     
-      stateNext |-> NULLSTATE,    
-      decl |-> "recovered", 
-      declNext |->  "faulted",   
-      penalties |-> ZERO
-    ],
+    T("DeclareFault", "faulty", NULLSTATE, "recovered", "faulted", ZERO),
 
     (***********************************************************************)
     (* DeclareRecovery: A faulty sector is marked as recovered.            *)
     (***********************************************************************)
-    [
-      method |-> "DeclareRecovery", 
-      state |-> "faulty",     
-      stateNext |-> NULLSTATE,    
-      decl |-> NULLDECL,    
-      declNext |->  "recovered", 
-      penalties |-> ZERO
-    ]
+    T("DeclareRecovery", "faulty", NULLSTATE, NULLDECL, "recovered", ZERO)
   }
   \union
-    (***********************************************************************)
-    (* TerminateSector: An active or faulty sector is terminated           *)
-    (***********************************************************************)
+
+  (*************************************************************************)
+  (* TerminateSector: An active or faulty sector is terminated             *)
+  (*************************************************************************)
   [
-      method: {"TerminateSector"},
-      state: {"faulty", "active"},
-      stateNext: {"done"},
-      decl: {"faulted", "recovered", NULLDECL},
-      declNext: {NULLDECL},
-      penalties: {TF}
-    ]
+    method: {"TerminateSector"},
+    state: {"faulty", "active"},
+    stateNext: {"done"},
+    decl: {"faulted", "recovered", NULLDECL},
+    declNext: {NULLDECL},
+    penalties: {TF}
+  ]
+  \union 
+
+  (*************************************************************************)
+  (* Termination Faults                                                    *)
+  (* WindowPoSt: Continued Fault (Termination Fault version)               *)
+  (* Same as Continued fault, sector is terminated.                        *)
+  (* WindowPoSt: Recovered Skipped Fault (Termination Fault version)       *)
+  (* Same as Recovered Skipped Fault, sector is terminated.                *)
+  (* WindowPoSt: Failed Recovery Declared Fault (Termination fault)        *)
+  (* Same as Failed Recovery Declared Fault, sector is terminated.         *)
+  (*************************************************************************)
+  [
+    method: {"WindowPoSt"},
+    state: {"faulty"},
+    stateNext: {"done"},
+    decl: {NULLDECL, "recovered", "faulted"},
+    declNext: {NULLDECL},
+    penalties: {TF}
+  ]
 
 StateTransitions ==
   (*************************************************************************)
@@ -328,19 +239,6 @@ define
     (* When true, the message execution has no error.                      *)
     (***********************************************************************)
 
-  PackTransition(method, state, stateNext, decl, declNext, pen) ==
-    (***********************************************************************)
-    (* Utility that packs a list into a struct.                            *)
-    (***********************************************************************)
-    [
-      method |-> method,
-      state |-> state,
-      stateNext |-> stateNext,
-      decl |-> decl,
-      declNext |-> declNext,
-      penalties |-> pen
-    ]
-
     \* INVARIANTS
 
   MessageInvariants ==
@@ -364,7 +262,7 @@ define
     (* If there are no errors, penalties must be set correctly.            *)
     (***********************************************************************)
     LET
-      PackedTransition == PackTransition(
+      PackedTransition == Pack(
         methodCalled,
         sectorState,
         sectorStateNext,
@@ -560,7 +458,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-7e16b08cedb3497d0add40e73b08bf6e
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-5f89b17395e0d9a4b9365570a85b0475
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -575,19 +473,6 @@ NoErrors == sectorStateError = NOERROR
 
 
 
-
-PackTransition(method, state, stateNext, decl, declNext, pen) ==
-
-
-
-  [
-    method |-> method,
-    state |-> state,
-    stateNext |-> stateNext,
-    decl |-> decl,
-    declNext |-> declNext,
-    penalties |-> pen
-  ]
 
 
 
@@ -612,7 +497,7 @@ PenaltiesInvariants ==
 
 
   LET
-    PackedTransition == PackTransition(
+    PackedTransition == Pack(
       methodCalled,
       sectorState,
       sectorStateNext,
@@ -855,5 +740,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-32ee105c87b52b8816888b6c42219ba8
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-27591c8bb16a9f6f4cf84a3289d686eb
 ====
