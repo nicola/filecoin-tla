@@ -8,7 +8,9 @@ SP == "sp"
 TF == "tf"
 PreCommitDeposit == "pcd"
 
-\* Tooling
+(***************************************************************************)
+(* Tooling                                                                 *)
+(***************************************************************************)
 NOERROR == "no sectorStateError"
 NULLSTATE == "null state"
 NULLDECL == "null decl"
@@ -48,49 +50,194 @@ Transitions ==
   (* - `penalties`: the penalty paid by the end of the call                *)
   (*************************************************************************)
   {
+    (***********************************************************************)
     (* Precommit: A clear sector is precommitted (clear ->  precommit)     *)
-    [method |-> "PreCommit",       state |-> "clear",      stateNext |-> "precommit",  decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
+    (***********************************************************************)
+    [
+      method |-> "PreCommit",
+      state |-> "clear",
+      stateNext |-> "precommit",
+      decl |-> NULLDECL,
+      declNext |->  NULLDECL,
+      penalties |-> ZERO
+    ],
 
+    (***********************************************************************)
     (* Commit: A precommitted sector becomes active (precommit -> active)  *)
-    [method |-> "Commit",          state |-> "precommit",  stateNext |-> "active",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
+    (***********************************************************************)
+    [
+      method |-> "Commit",          
+      state |-> "precommit",  
+      stateNext |-> "active",     
+      decl |-> NULLDECL,    
+      declNext |->  NULLDECL,    
+      penalties |-> ZERO
+    ],
 
+    (***********************************************************************)
     (* WindowPoSt                                                          *)
     (* - honest: An active sector remains active                           *)
-    [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "active",     
+      stateNext |-> NULLSTATE,    
+      decl |-> NULLDECL,    
+      declNext |->  NULLDECL,    
+      penalties |-> ZERO
+    ],
+
+    (***********************************************************************)
     (* - continued faults: A faulty sector remains faulty                  *)
-    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> FF],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "faulty",     
+      stateNext |-> NULLSTATE,    
+      decl |-> NULLDECL,    
+      declNext |->  NULLDECL,    
+      penalties |-> FF
+    ],
+
+    (***********************************************************************)
     (*     - with termination: if faulty for too long, it's terminated     *)
-    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> TF],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "faulty",     
+      stateNext |-> "done",       
+      decl |-> NULLDECL,    
+      declNext |->  NULLDECL,    
+      penalties |-> TF
+    ],
+
+    (***********************************************************************)
     (* - new declared faults: An active sector that is declared faulted    *)
     (*   becomes faulty                                                    *)
-    [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> "faulty",     decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "active",     
+      stateNext |-> "faulty",     
+      decl |-> "faulted",   
+      declNext |->  NULLDECL,    
+      penalties |-> FF
+    ],
+
+    (***********************************************************************)
     (* - skipped faults: An active sector not declared faulty that fails   *)
     (*   post becomes faulty                                               *)
-    [method |-> "WindowPoSt",      state |-> "active",     stateNext |-> "faulty",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> SP],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "active",     
+      stateNext |-> "faulty",     
+      decl |-> NULLDECL,    
+      declNext |->  NULLDECL,    
+      penalties |-> SP
+    ],
+
+    (***********************************************************************)
     (* - recovered: An faulty sector that is declared recovered becomes    *)
     (*   active                                                            *)
-    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "active",     decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> ZERO],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "faulty",     
+      stateNext |-> "active",     
+      decl |-> "recovered", 
+      declNext |->  NULLDECL,    
+      penalties |-> ZERO
+    ],
+
+    (***********************************************************************)
     (* - failed recovery: A faulty sector that is claimed recovered but    *)
     (*   fails post is penalized as skipped fault                          *)
-    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> SP],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "faulty",     
+      stateNext |-> NULLSTATE,    
+      decl |-> "recovered", 
+      declNext |->  NULLDECL,    
+      penalties |-> SP
+    ],
+
+    (***********************************************************************)
     (*     - with termination: if faulty for too long, it's terminated     *)
-    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> TF],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "faulty",     
+      stateNext |-> "done",       
+      decl |-> "recovered", 
+      declNext |->  NULLDECL,    
+      penalties |-> TF
+    ],
+
+    (***********************************************************************)
     (* - recovered fault reported faulty again: A faulty sector is         *)
     (*   declared faulted (from a previous recovery)                       *)
-    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
-    (*     - with termination: if faulty for too long, it's terminated     *)
-    [method |-> "WindowPoSt",      state |-> "faulty",     stateNext |-> "done",       decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> TF],
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "faulty",     
+      stateNext |-> NULLSTATE,    
+      decl |-> "faulted",   
+      declNext |->  NULLDECL,    
+      penalties |-> FF
+    ],
 
+    (***********************************************************************)
+    (*     - with termination: if faulty for too long, it's terminated     *)
+    (***********************************************************************)
+    [
+      method |-> "WindowPoSt",      
+      state |-> "faulty",     
+      stateNext |-> "done",       
+      decl |-> "faulted",   
+      declNext |->  NULLDECL,    
+      penalties |-> TF
+    ],
+
+    (***********************************************************************)
     (* DeclareFaults                                                       *)
     (* - active is now faulted: An active sector is declared as faulted    *)
-    [method |-> "DeclareFault",    state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "faulted",   penalties |-> ZERO],
+    (***********************************************************************)
+    [
+      method |-> "DeclareFault",    
+      state |-> "active",     
+      stateNext |-> NULLSTATE,    
+      decl |-> NULLDECL,    
+      declNext |->  "faulted",   
+      penalties |-> ZERO
+    ],
+
+    (***********************************************************************)
     (* - recovered is now faulted: A faulty sector is declared faulted     *)
     (* again (from a previous recovery)                                    *)
-    [method |-> "DeclareFault",    state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  "faulted",   penalties |-> ZERO],
+    (***********************************************************************)
+    [
+      method |-> "DeclareFault",    
+      state |-> "faulty",     
+      stateNext |-> NULLSTATE,    
+      decl |-> "recovered", 
+      declNext |->  "faulted",   
+      penalties |-> ZERO
+    ],
 
+    (***********************************************************************)
     (* DeclareRecovery                                                     *)
     (* - faulty is now recovered: A faulty sector is declared recovered    *)
-    [method |-> "DeclareRecovery", state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "recovered", penalties |-> ZERO]
+    (***********************************************************************)
+    [
+      method |-> "DeclareRecovery", 
+      state |-> "faulty",     
+      stateNext |-> NULLSTATE,    
+      decl |-> NULLDECL,    
+      declNext |->  "recovered", 
+      penalties |-> ZERO
+    ]
   }
 
 StateTransitions ==
@@ -242,7 +389,9 @@ define
         (* A sector is active and declared as faulty.                      *)
         (*******************************************************************)
 
-    IN FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
+    IN \/ FailedRecoveryDeclaredFault
+       \/ ContinuedDeclaredFault
+       \/ NewDeclaredFault
 
   \* RecoveredSector - A sector is recovered
   RecoveredSector ==
@@ -266,7 +415,8 @@ begin
                 either
                     PreCommit:
                         methodCalled := "PreCommit";
-                        if sectorState = "clear" /\ declaration = NULLDECL then
+                        if /\ sectorState = "clear"
+                           /\ declaration = NULLDECL then
                             \* Mark sector as committed
                             sectorStateNext := "precommit";
                         else
@@ -275,7 +425,8 @@ begin
                 or
                     Commit:
                         methodCalled := "Commit";
-                        if sectorState = "precommit" /\ declaration = NULLDECL then
+                        if /\ sectorState = "precommit"
+                           /\ declaration = NULLDECL then
                             \* Mark sector as active
                             sectorStateNext := "active";
                         else
@@ -304,7 +455,8 @@ begin
                 or
                     WindowPoSt:
                         methodCalled := "WindowPoSt";
-                        if (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" }) \/ sectorState = "faulty" then
+                        if \/ (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" })
+                           \/ sectorState = "faulty" then
 
                             \* - skipped faults
                             \* - failed recovery
@@ -330,7 +482,8 @@ begin
                             \* Update faults counter when the sector is faulty
                             \* either the sector is faulty already
                             \*     or the sector is found to be faulty
-                            if sectorState = "faulty" /\ sectorStateNext \in {NULLSTATE, "faulty"} then
+                            if /\ sectorState = "faulty"
+                               /\ sectorStateNext \in {NULLSTATE, "faulty"} then
                                 failedPoSts := failedPoSts + 1;
                             else
                                 failedPoSts := 0;
@@ -343,7 +496,7 @@ begin
                                     sectorStateNext := "done";
                                 end if;
                         else
-                            sectorStateError := "sector was not active nor faulty";
+                            sectorStateError := "invalid window post";
                         end if;
                         \* Termination
 
@@ -379,7 +532,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-5d73b94474103f39dfe9b20b6bdc1041
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-a62d67c1cf452e4553fd98b783926fd4
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -476,7 +629,9 @@ DeclaredFault ==
 
 
 
-  IN FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
+  IN \/ FailedRecoveryDeclaredFault
+     \/ ContinuedDeclaredFault
+     \/ NewDeclaredFault
 
 
 RecoveredSector ==
@@ -529,7 +684,8 @@ Block == /\ pc["miner"] = "Block"
 
 PreCommit == /\ pc["miner"] = "PreCommit"
              /\ methodCalled' = "PreCommit"
-             /\ IF sectorState = "clear" /\ declaration = NULLDECL
+             /\ IF /\ sectorState = "clear"
+                   /\ declaration = NULLDECL
                    THEN /\ sectorStateNext' = "precommit"
                         /\ UNCHANGED sectorStateError
                    ELSE /\ sectorStateError' = "invalid precommit"
@@ -540,7 +696,8 @@ PreCommit == /\ pc["miner"] = "PreCommit"
 
 Commit == /\ pc["miner"] = "Commit"
           /\ methodCalled' = "Commit"
-          /\ IF sectorState = "precommit" /\ declaration = NULLDECL
+          /\ IF /\ sectorState = "precommit"
+                /\ declaration = NULLDECL
                 THEN /\ sectorStateNext' = "active"
                      /\ UNCHANGED sectorStateError
                 ELSE /\ sectorStateError' = "invalid commit"
@@ -576,7 +733,8 @@ DeclareRecovery == /\ pc["miner"] = "DeclareRecovery"
 
 WindowPoSt == /\ pc["miner"] = "WindowPoSt"
               /\ methodCalled' = "WindowPoSt"
-              /\ IF (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" }) \/ sectorState = "faulty"
+              /\ IF \/ (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" })
+                    \/ sectorState = "faulty"
                     THEN /\ IF RecoveredSector
                                THEN /\ sectorStateNext' = "active"
                                     /\ UNCHANGED penalties
@@ -595,12 +753,13 @@ WindowPoSt == /\ pc["miner"] = "WindowPoSt"
                                                      ELSE /\ TRUE
                                                           /\ UNCHANGED << sectorStateNext, 
                                                                           penalties >>
-                         /\ IF sectorState = "faulty" /\ sectorStateNext' \in {NULLSTATE, "faulty"}
+                         /\ IF /\ sectorState = "faulty"
+                               /\ sectorStateNext' \in {NULLSTATE, "faulty"}
                                THEN /\ failedPoSts' = failedPoSts + 1
                                ELSE /\ failedPoSts' = 0
                          /\ pc' = [pc EXCEPT !["miner"] = "ApplyPenalty"]
                          /\ UNCHANGED sectorStateError
-                    ELSE /\ sectorStateError' = "sector was not active nor faulty"
+                    ELSE /\ sectorStateError' = "invalid window post"
                          /\ pc' = [pc EXCEPT !["miner"] = "End"]
                          /\ UNCHANGED << sectorStateNext, failedPoSts, 
                                          penalties >>
@@ -655,5 +814,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-5045ede687785f445f027149b667a638
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-7aae4b1e0d124f752372bc3aa0262a43
 ====
