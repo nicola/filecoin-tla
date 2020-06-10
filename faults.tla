@@ -78,7 +78,7 @@ variables
     sectorStateError = NOERROR,
     
     \* declaration before a method call
-    declaration = NULLDECL,
+    declaration \in Declarations \union { NULLDECL },
     \* declaration after a method call
     declarationNext = NULLDECL,
     
@@ -155,26 +155,26 @@ begin
                 either
                     PreCommit:
                         methodCalled := "PreCommit";
-                        if sectorState /= "clear" then
-                            sectorStateError := "invalid precommit";
-                        else
+                        if sectorState = "clear" /\ declaration = NULLDECL then
                             \* Mark sector as committed
                             sectorStateNext := "precommit";
+                        else
+                            sectorStateError := "invalid precommit";
                         end if;
                 or
                     Commit:
                         methodCalled := "Commit";
-                        if sectorState /= "precommit" then
-                            sectorStateError := "invalid commit";
-                        else
+                        if sectorState = "precommit" /\ declaration = NULLDECL then
                             \* Mark sector as active
                             sectorStateNext := "active";
+                        else
+                            sectorStateError := "invalid commit";
                         end if;   
                 or
                     DeclareFault:
                         methodCalled := "DeclareFault";
                         \* Declare active sector as faulted
-                        if sectorState = "active" /\ declaration /= NULLDECL then
+                        if sectorState = "active" /\ declaration = NULLDECL then
                             declarationNext := "faulted";
                         \* Declare recovered faulty sector as faulted
                         elsif sectorState = "faulty" /\ declaration = "recovered" then
@@ -193,7 +193,7 @@ begin
                 or
                     WindowPoSt:
                         methodCalled := "WindowPoSt";
-                        if sectorState \in {"active", "faulty"} then
+                        if (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" }) \/ sectorState = "faulty" then
 
                             \* - skipped faults
                             \* - failed recovery
@@ -268,7 +268,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-a9d79f98eda2aa60496167e98fdb7c24
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-8cd236bdfd1a4c8646d9e6dbb5d6bbb3
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -332,7 +332,7 @@ Init == (* Global variables *)
         /\ sectorState \in SectorStates
         /\ sectorStateNext = NULLSTATE
         /\ sectorStateError = NOERROR
-        /\ declaration = NULLDECL
+        /\ declaration \in (Declarations \union { NULLDECL })
         /\ declarationNext = NULLDECL
         /\ failedPoSts \in 0..2
         /\ skippedFault \in BOOLEAN
@@ -364,29 +364,29 @@ Block == /\ pc["miner"] = "Block"
 
 PreCommit == /\ pc["miner"] = "PreCommit"
              /\ methodCalled' = "PreCommit"
-             /\ IF sectorState /= "clear"
-                   THEN /\ sectorStateError' = "invalid precommit"
-                        /\ UNCHANGED sectorStateNext
-                   ELSE /\ sectorStateNext' = "precommit"
+             /\ IF sectorState = "clear" /\ declaration = NULLDECL
+                   THEN /\ sectorStateNext' = "precommit"
                         /\ UNCHANGED sectorStateError
+                   ELSE /\ sectorStateError' = "invalid precommit"
+                        /\ UNCHANGED sectorStateNext
              /\ pc' = [pc EXCEPT !["miner"] = "End"]
              /\ UNCHANGED << sectorState, declaration, declarationNext, 
                              failedPoSts, skippedFault, penalties, epoch >>
 
 Commit == /\ pc["miner"] = "Commit"
           /\ methodCalled' = "Commit"
-          /\ IF sectorState /= "precommit"
-                THEN /\ sectorStateError' = "invalid commit"
-                     /\ UNCHANGED sectorStateNext
-                ELSE /\ sectorStateNext' = "active"
+          /\ IF sectorState = "precommit" /\ declaration = NULLDECL
+                THEN /\ sectorStateNext' = "active"
                      /\ UNCHANGED sectorStateError
+                ELSE /\ sectorStateError' = "invalid commit"
+                     /\ UNCHANGED sectorStateNext
           /\ pc' = [pc EXCEPT !["miner"] = "End"]
           /\ UNCHANGED << sectorState, declaration, declarationNext, 
                           failedPoSts, skippedFault, penalties, epoch >>
 
 DeclareFault == /\ pc["miner"] = "DeclareFault"
                 /\ methodCalled' = "DeclareFault"
-                /\ IF sectorState = "active" /\ declaration /= NULLDECL
+                /\ IF sectorState = "active" /\ declaration = NULLDECL
                       THEN /\ declarationNext' = "faulted"
                            /\ UNCHANGED sectorStateError
                       ELSE /\ IF sectorState = "faulty" /\ declaration = "recovered"
@@ -411,7 +411,7 @@ DeclareRecovery == /\ pc["miner"] = "DeclareRecovery"
 
 WindowPoSt == /\ pc["miner"] = "WindowPoSt"
               /\ methodCalled' = "WindowPoSt"
-              /\ IF sectorState \in {"active", "faulty"}
+              /\ IF (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" }) \/ sectorState = "faulty"
                     THEN /\ IF RecoveredFault
                                THEN /\ sectorStateNext' = "active"
                                     /\ UNCHANGED penalties
@@ -490,5 +490,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-018fb0573716962ae6045660f1fb10cb
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-eee899931420eb4ff3697281e9c97be9
 ====
