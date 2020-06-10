@@ -8,74 +8,57 @@ SP == "sp"
 TF == "tf"
 PreCommitDeposit == "pcd"
 
-\* errors
+\* Tooling
 NOERROR == "no sectorStateError"
-
-\* Sector State transitions
 NULLSTATE == "null state"
-
 NULLDECL == "null decl"
 NULLMETHOD == "null method"
 
-SectorStates == { "precommit", "active", "faulty", "null" }
-SectorStateTs == {
-    \* Honest transitions
-    <<"null", "precommit", {ZERO}>>,
-    <<"precommit", "active", {ZERO}>>,
-
-    \* Faults
-    <<"active", "faulty", {FF, SP}>>,
-    <<"faulty", "active", {ZERO}>>
-
-    \* sectors are terminated
-    \* <<"faulty", "done", {FF, SP, TF}>>,
-    \* <<"active", "done", {ZERO, TF}>>,
-
-    \* Sector is cleaned up, ID can be reused
-    \* <<"precommit", "null", {PreCommitDeposit}>>
-}
-
+SectorStates == { "precommit", "active", "faulty", "clear" }
+Declarations == { "faulted", "recovered" }
 Methods == {"PreCommit", "Commit", "WindowPoSt", "DeclareFault", "DeclareRecovery"}
-SectorStateMessages == {
+
+States == {
     \* Precommit
-    [method |-> "PreCommit",    state |-> "null",       stateNext |-> "precommit",  decl |-> NULLDECL,    declNext |->  NULLDECL],
+    [method |-> "PreCommit",    state |-> "clear",      stateNext |-> "precommit",  decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
 
     \* Commit
-    [method |-> "Commit",       state |-> "precommit",  stateNext |-> "active",     decl |-> NULLDECL,    declNext |->  NULLDECL],
+    [method |-> "Commit",       state |-> "precommit",  stateNext |-> "active",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
 
     \* WindowPoSt
     \* - honest
-    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL],
+    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
     \* - continued faults
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL],
+    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> FF],
+    \*     - with termination
+    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "done",    decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> TF],
     \* - new declared faults
-    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> "faulty",     decl |-> "faulted",   declNext |->  NULLDECL],
+    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> "faulty",     decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
     \* - skipped faults
-    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> "faulty",     decl |-> NULLDECL,    declNext |->  NULLDECL],
+    [method |-> "WindowPoSt",   state |-> "active",     stateNext |-> "faulty",     decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> SP],
     \* - recovered
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "active",     decl |-> "recovered", declNext |->  NULLDECL],
+    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "active",     decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> ZERO],
     \* - failed recovery
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  NULLDECL],
+    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> SP],
+    \*     - with termination
+    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "done",    decl |-> "recovered", declNext |->  NULLDECL,    penalties |-> TF],
     \* - recovered fault reported faulty again
-    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "faulted",   declNext |->  NULLDECL],
+    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> FF],
+    \*     - with termination
+    [method |-> "WindowPoSt",   state |-> "faulty",     stateNext |-> "done",    decl |-> "faulted",   declNext |->  NULLDECL,    penalties |-> TF],
 
     \* DeclareFaults
     \* - active is now faulted
-    [method |-> "DeclareFault", state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "faulted"],
+    [method |-> "DeclareFault", state |-> "active",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "faulted",   penalties |-> ZERO],
     \* - recovered is now faulted
-    [method |-> "DeclareFault", state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  "faulted"],
+    [method |-> "DeclareFault", state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> "recovered", declNext |->  "faulted",   penalties |-> ZERO],
 
     \* DeclareRecovery
     \* - faulty is now recovered
-    [method |-> "DeclareRecovery", state |-> "faulty",  stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "recovered"]
+    [method |-> "DeclareRecovery", state |-> "faulty",  stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "recovered", penalties |-> ZERO]
 }
 
-Declarations == { "recovered", "faulted" }
-DeclarationTs == {
-    <<"active", "faulted", "faulty">>,
-    <<"faulty", "recovered", "active">>,
-    <<"faulty", "faulted", NULLSTATE>>
-}
+Transitions == { <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> : x \in States }
 
 (*--algorithm faults
 variables
@@ -93,37 +76,34 @@ variables
     methodCalled = NULLMETHOD;
 
 define
-    InitTs == LET
-        SectorStateInit == sectorStateNext = NULLSTATE /\ sectorStateError = NOERROR
-        DeclarationInit == declaration = NULLDECL
-    IN SectorStateInit /\ DeclarationInit
-
-    SectorStateTransition(from, to) == <<from, to>> \in { <<x[1], x[2]>> : x \in SectorStateTs }
-    ValidDeclaration(from, flag) == <<from, flag>> \in { <<x[1], x[2]>> : x \in DeclarationTs }
-    ValidDeclarationTs(from, flag, to) == <<from, flag, to>> \in DeclarationTs
-    PackState(method, state, stateNext, decl, declNext) == [ method |-> method, state |-> state, stateNext |-> stateNext, decl |-> decl, declNext |-> declNext]
-
+    MessageExecuted == pc["miner"] = "End"
     NoErrors == sectorStateError = NOERROR
+    PackState(method, state, stateNext, decl, declNext, pen) == [
+        method |-> method,
+        state |-> state,
+        stateNext |-> stateNext,
+        decl |-> decl,
+        declNext |-> declNext,
+        penalties |-> pen
+    ]
 
-    PackedState == PackState(methodCalled, sectorState, sectorStateNext, declaration, declarationNext)
-    ValidMessage == PackedState \in SectorStateMessages
-    ValidMessageNoError ==  ValidMessage /\ NoErrors
-    InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
-    MessageInvariants == pc["miner"] = "End" => ValidMessageNoError \/ InvalidMessageHaveError
+    MessageInvariants == LET
+        ValidMessage == <<methodCalled, sectorState, sectorStateNext, declaration, declarationNext>> \in Transitions
+        ValidMessageNoError ==  ValidMessage /\ NoErrors
+        InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
+    IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
 
-    SectorStateInvariants == LET
-        \* A valid state transition has no sectorStateError
-        ValidStateTs == sectorStateNext /= NULLSTATE => (SectorStateTransition(sectorState, sectorStateNext) /\ sectorStateError = NOERROR)
-        \* An invalid state transition has an sectorStateError
-        InvalidStateTsHaveError == ~SectorStateTransition(sectorState, sectorStateNext) /\ sectorStateError /= NOERROR
-        \* Initial state
-    IN  ValidStateTs \/ InvalidStateTsHaveError \/ InitTs
+    PenaltiesInvariants == LET
+        ValidPenalty == PackState(methodCalled, sectorState, sectorStateNext, declaration, declarationNext, penalties) \in States
+    IN MessageExecuted /\ NoErrors => ValidPenalty
 
-    DeclarationInvariants == LET 
-        DeclaredState == sectorState \in {"active", "faulty"} /\ declaration /= NULLDECL
-        ValidDeclarationState ==  DeclaredState /\ sectorStateNext = NULLSTATE => ValidDeclaration(sectorState, declaration)
-        ValidDeclarationExecution == DeclaredState /\ sectorStateNext /= NULLSTATE => ValidDeclarationTs(sectorState, declaration, sectorStateNext)
-    IN (ValidDeclarationState /\ ValidDeclarationExecution) \/ InitTs
+    ExpectingProof == (sectorState = "active" /\ declaration = NULLDECL) \/ (sectorState = "faulty" /\ declaration = "recovered")
+    SkippedFault == ExpectingProof /\ skippedFault
+    FailedRecoveryDeclaredFault == sectorState = "faulty" \/ declaration = "faulted"
+    ContinuedDeclaredFault == sectorState = "faulty" /\ declaration = NULLDECL
+    NewDeclaredFault == sectorState = "active" /\ declaration = "faulted"
+    DeclaredFault == FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
+    RecoveredFault == sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
 
 end define;
 
@@ -131,13 +111,13 @@ fair+ process miner = "miner"
 variables epoch = 0
 begin
     Blockchain:
-        while epoch < 3 do
+        while epoch < 5 do
             epoch := epoch + 1;
             Block:
                 either
                     PreCommit:
                         methodCalled := "PreCommit";
-                        if sectorState /= "null" then
+                        if sectorState /= "clear" then
                             sectorStateError := "invalid precommit";
                         else
                             \* Mark sector as committed
@@ -176,37 +156,43 @@ begin
                     WindowPoSt:
                         methodCalled := "WindowPoSt";
                         if sectorState \in {"active", "faulty"} then
-                            \* State changes
-                            \* Active -> Faulty: SkippedFault
-                            if sectorState = "active" /\ declaration = NULLDECL /\ skippedFault then
-                                sectorStateNext := "faulty";
-                            \* Active -> Faulty: DeclareFault
-                            elsif sectorState = "active" /\ declaration = "faulted" then
-                                sectorStateNext := "faulty";
-                            \* Faulty -> Active: DeclareRecovery
-                            elsif sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault then
+
+                            \* - skipped faults
+                            \* - failed recovery
+                            if RecoveredFault then
                                 sectorStateNext := "active";
+                            elsif SkippedFault then
+                                if sectorState = "active" then
+                                    sectorStateNext := "faulty";
+                                end if;
+                                penalties := SP;
+
+                            \* - continued faults
+                            \* - recovered fault reported faulty again
+                            \* - new declared faults
+                            elsif DeclaredFault then
+                                if sectorState = "active" then
+                                    sectorStateNext := "faulty";
+                                end if;
+                                penalties := FF;
+                            \* - recovered
                             end if;
-                            
+
                             \* Update faults counter when the sector is faulty
                             \* either the sector is faulty already
                             \*     or the sector is found to be faulty
-                            if (sectorState = "faulty" /\ sectorStateNext = NULLSTATE) \/ sectorStateNext = "faulty" then
+                            if sectorStateNext /= "active" /\ (DeclareFault \/ SkippedFault) then
                                 failedPoSts := failedPoSts + 1;
                             else
                                 failedPoSts := 0;
                             end if;
 
                             \* Apply penalties
-                            if failedPoSts > 3 then
-                                penalties := TF;
-                            elsif sectorState = "faulty" /\ declaration = "recovered" /\ skippedFault then
-                                penalties := SP;
-                            elsif sectorStateNext = "faulty" then
-                                penalties := SP;
-                            elsif sectorState = "faulty" \/ (sectorState = "active" /\ declaration = "faulted") then
-                                penalties := FF;
-                            end if;
+                            ApplyPenalty:
+                                if failedPoSts > 3 then
+                                    penalties := TF;
+                                    sectorStateNext := "done";
+                                end if;
                         else
                             sectorStateError := "sector was not active nor faulty";
                         end if;
@@ -239,43 +225,40 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-b51d1d0e03ee0a3a165016c599b5bd00
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-f314d3c8662aa26f62b7d61fda6ee8f2
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
 
 (* define statement *)
-InitTs == LET
-    SectorStateInit == sectorStateNext = NULLSTATE /\ sectorStateError = NOERROR
-    DeclarationInit == declaration = NULLDECL
-IN SectorStateInit /\ DeclarationInit
-
-SectorStateTransition(from, to) == <<from, to>> \in { <<x[1], x[2]>> : x \in SectorStateTs }
-ValidDeclaration(from, flag) == <<from, flag>> \in { <<x[1], x[2]>> : x \in DeclarationTs }
-ValidDeclarationTs(from, flag, to) == <<from, flag, to>> \in DeclarationTs
-PackState(method, state, stateNext, decl, declNext) == [ method |-> method, state |-> state, stateNext |-> stateNext, decl |-> decl, declNext |-> declNext]
-
+MessageExecuted == pc["miner"] = "End"
 NoErrors == sectorStateError = NOERROR
+PackState(method, state, stateNext, decl, declNext, pen) == [
+    method |-> method,
+    state |-> state,
+    stateNext |-> stateNext,
+    decl |-> decl,
+    declNext |-> declNext,
+    penalties |-> pen
+]
 
-PackedState == PackState(methodCalled, sectorState, sectorStateNext, declaration, declarationNext)
-ValidMessage == PackedState \in SectorStateMessages
-ValidMessageNoError ==  ValidMessage /\ NoErrors
-InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
-MessageInvariants == pc["miner"] = "End" => ValidMessageNoError \/ InvalidMessageHaveError
+MessageInvariants == LET
+    ValidMessage == <<methodCalled, sectorState, sectorStateNext, declaration, declarationNext>> \in Transitions
+    ValidMessageNoError ==  ValidMessage /\ NoErrors
+    InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
+IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
 
-SectorStateInvariants == LET
+PenaltiesInvariants == LET
+    ValidPenalty == PackState(methodCalled, sectorState, sectorStateNext, declaration, declarationNext, penalties) \in States
+IN MessageExecuted /\ NoErrors => ValidPenalty
 
-    ValidStateTs == sectorStateNext /= NULLSTATE => (SectorStateTransition(sectorState, sectorStateNext) /\ sectorStateError = NOERROR)
-
-    InvalidStateTsHaveError == ~SectorStateTransition(sectorState, sectorStateNext) /\ sectorStateError /= NOERROR
-
-IN  ValidStateTs \/ InvalidStateTsHaveError \/ InitTs
-
-DeclarationInvariants == LET
-    DeclaredState == sectorState \in {"active", "faulty"} /\ declaration /= NULLDECL
-    ValidDeclarationState ==  DeclaredState /\ sectorStateNext = NULLSTATE => ValidDeclaration(sectorState, declaration)
-    ValidDeclarationExecution == DeclaredState /\ sectorStateNext /= NULLSTATE => ValidDeclarationTs(sectorState, declaration, sectorStateNext)
-IN (ValidDeclarationState /\ ValidDeclarationExecution) \/ InitTs
+ExpectingProof == (sectorState = "active" /\ declaration = NULLDECL) \/ (sectorState = "faulty" /\ declaration = "recovered")
+SkippedFault == ExpectingProof /\ skippedFault
+FailedRecoveryDeclaredFault == sectorState = "faulty" \/ declaration = "faulted"
+ContinuedDeclaredFault == sectorState = "faulty" /\ declaration = NULLDECL
+NewDeclaredFault == sectorState = "active" /\ declaration = "faulted"
+DeclaredFault == FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
+RecoveredFault == sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
 
 VARIABLE epoch
 
@@ -300,7 +283,7 @@ Init == (* Global variables *)
         /\ pc = [self \in ProcSet |-> "Blockchain"]
 
 Blockchain == /\ pc["miner"] = "Blockchain"
-              /\ IF epoch < 3
+              /\ IF epoch < 5
                     THEN /\ epoch' = epoch + 1
                          /\ pc' = [pc EXCEPT !["miner"] = "Block"]
                     ELSE /\ pc' = [pc EXCEPT !["miner"] = "Done"]
@@ -321,7 +304,7 @@ Block == /\ pc["miner"] = "Block"
 
 PreCommit == /\ pc["miner"] = "PreCommit"
              /\ methodCalled' = "PreCommit"
-             /\ IF sectorState /= "null"
+             /\ IF sectorState /= "clear"
                    THEN /\ sectorStateError' = "invalid precommit"
                         /\ UNCHANGED sectorStateNext
                    ELSE /\ sectorStateNext' = "precommit"
@@ -369,34 +352,46 @@ DeclareRecovery == /\ pc["miner"] = "DeclareRecovery"
 WindowPoSt == /\ pc["miner"] = "WindowPoSt"
               /\ methodCalled' = "WindowPoSt"
               /\ IF sectorState \in {"active", "faulty"}
-                    THEN /\ IF sectorState = "active" /\ declaration = NULLDECL /\ skippedFault
-                               THEN /\ sectorStateNext' = "faulty"
-                               ELSE /\ IF sectorState = "active" /\ declaration = "faulted"
-                                          THEN /\ sectorStateNext' = "faulty"
-                                          ELSE /\ IF sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
-                                                     THEN /\ sectorStateNext' = "active"
+                    THEN /\ IF RecoveredFault
+                               THEN /\ sectorStateNext' = "active"
+                                    /\ UNCHANGED penalties
+                               ELSE /\ IF SkippedFault
+                                          THEN /\ IF sectorState = "active"
+                                                     THEN /\ sectorStateNext' = "faulty"
                                                      ELSE /\ TRUE
                                                           /\ UNCHANGED sectorStateNext
-                         /\ IF (sectorState = "faulty" /\ sectorStateNext' = NULLSTATE) \/ sectorStateNext' = "faulty"
+                                               /\ penalties' = SP
+                                          ELSE /\ IF DeclaredFault
+                                                     THEN /\ IF sectorState = "active"
+                                                                THEN /\ sectorStateNext' = "faulty"
+                                                                ELSE /\ TRUE
+                                                                     /\ UNCHANGED sectorStateNext
+                                                          /\ penalties' = FF
+                                                     ELSE /\ TRUE
+                                                          /\ UNCHANGED << sectorStateNext, 
+                                                                          penalties >>
+                         /\ IF sectorStateNext' /= "active" /\ (DeclareFault \/ SkippedFault)
                                THEN /\ failedPoSts' = failedPoSts + 1
                                ELSE /\ failedPoSts' = 0
-                         /\ IF failedPoSts' > 3
-                               THEN /\ penalties' = TF
-                               ELSE /\ IF sectorState = "faulty" /\ declaration = "recovered" /\ skippedFault
-                                          THEN /\ penalties' = SP
-                                          ELSE /\ IF sectorStateNext' = "faulty"
-                                                     THEN /\ penalties' = SP
-                                                     ELSE /\ IF sectorState = "faulty" \/ (sectorState = "active" /\ declaration = "faulted")
-                                                                THEN /\ penalties' = FF
-                                                                ELSE /\ TRUE
-                                                                     /\ UNCHANGED penalties
+                         /\ pc' = [pc EXCEPT !["miner"] = "ApplyPenalty"]
                          /\ UNCHANGED sectorStateError
                     ELSE /\ sectorStateError' = "sector was not active nor faulty"
+                         /\ pc' = [pc EXCEPT !["miner"] = "End"]
                          /\ UNCHANGED << sectorStateNext, failedPoSts, 
                                          penalties >>
-              /\ pc' = [pc EXCEPT !["miner"] = "End"]
               /\ UNCHANGED << sectorState, declaration, declarationNext, 
                               skippedFault, epoch >>
+
+ApplyPenalty == /\ pc["miner"] = "ApplyPenalty"
+                /\ IF failedPoSts > 3
+                      THEN /\ penalties' = TF
+                           /\ sectorStateNext' = "done"
+                      ELSE /\ TRUE
+                           /\ UNCHANGED << sectorStateNext, penalties >>
+                /\ pc' = [pc EXCEPT !["miner"] = "End"]
+                /\ UNCHANGED << sectorState, sectorStateError, declaration, 
+                                declarationNext, failedPoSts, skippedFault, 
+                                methodCalled, epoch >>
 
 End == /\ pc["miner"] = "End"
        /\ IF sectorStateNext /= NULLSTATE
@@ -417,7 +412,7 @@ End == /\ pc["miner"] = "End"
        /\ UNCHANGED << failedPoSts, epoch >>
 
 miner == Blockchain \/ Block \/ PreCommit \/ Commit \/ DeclareFault
-            \/ DeclareRecovery \/ WindowPoSt \/ End
+            \/ DeclareRecovery \/ WindowPoSt \/ ApplyPenalty \/ End
 
 (* Allow infinite stuttering to prevent deadlock on termination. *)
 Terminating == /\ \A self \in ProcSet: pc[self] = "Done"
@@ -431,5 +426,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-c889fe459ef6bb4f0a8a539509b7f5ac
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-a52d62fa38c46a6e542f85a723df7f24
 ====
