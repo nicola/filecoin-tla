@@ -1,4 +1,4 @@
----- MODULE faults ----
+------------------------------ MODULE faults --------------------------------
 EXTENDS Integers, TLC
 
 \* Faults
@@ -15,17 +15,32 @@ NULLDECL == "null decl"
 NULLMETHOD == "null method"
 
 SectorStates == { "precommit", "active", "faulty", "clear" }
-Declarations == { "faulted", "recovered" }
-Methods == {"PreCommit", "Commit", "WindowPoSt", "DeclareFault", "DeclareRecovery"}
+  (*************************************************************************)
+  (* The set of all sector states.                                         *)
+  (*************************************************************************)
 
-\* `Transition` - All valid transitions for the storage Miner
-\* - `method`: the Actor method called 
-\* - `state`: the sector state at the beginning of the call
-\* - `stateNext`: the sector state at the end of the call
-\* - `decl`: the state of the declaration of a sector at the beginning of the call
-\* - `declNext`: the state of the declaration at the end of the call
-\* - `penalties`: the penalty paid by the end of the call
-Transitions == {
+Declarations == { "faulted", "recovered" }
+  (*************************************************************************)
+  (* The set of all declarations that are considered during WindowPoSt     *)
+  (*************************************************************************)
+
+Methods ==
+  (*************************************************************************)
+  (* The set of StorageMiner actor methods                                 *)
+  (*************************************************************************)
+  {
+    "PreCommit",
+    "Commit",
+    "WindowPoSt",
+    "DeclareFault",
+    "DeclareRecovery"
+  }
+
+Transitions ==
+  (*************************************************************************)
+  (* The set of all valid StorageMiner state transitions.                  *)
+  (*************************************************************************)
+  {
     \* Precommit: A clear sector is precommitted (clear ->  precommit)
     [method |-> "PreCommit",       state |-> "clear",      stateNext |-> "precommit",  decl |-> NULLDECL,    declNext |->  NULLDECL,    penalties |-> ZERO],
 
@@ -63,82 +78,172 @@ Transitions == {
     \* DeclareRecovery
     \* - faulty is now recovered: A faulty sector is declared recovered
     [method |-> "DeclareRecovery", state |-> "faulty",     stateNext |-> NULLSTATE,    decl |-> NULLDECL,    declNext |->  "recovered", penalties |-> ZERO]
-}
+  }
+  \* `Transition` - All valid transitions for the storage Miner
+  \* - `method`: the Actor method called 
+  \* - `state`: the sector state at the beginning of the call
+  \* - `stateNext`: the sector state at the end of the call
+  \* - `decl`: the state of the declaration of a sector at the beginning of the call
+  \* - `declNext`: the state of the declaration at the end of the call
+  \* - `penalties`: the penalty paid by the end of the call
 
-\* StateTransitions - Same as Transitions without penalties
-StateTransitions == { <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> : x \in Transitions }
+StateTransitions ==
+  (*************************************************************************)
+  (* Same as Transitions without penalties.                                *)
+  (*************************************************************************)
+  {
+    <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> :
+    x \in Transitions
+  }
 
 (*--algorithm faults
 variables
-    \* sector state before a method call
-    sectorState \in SectorStates,
-    \* sector state at the end of a method call
-    sectorStateNext = NULLSTATE,
-    \* error from an invalid sector state transition
-    sectorStateError = NOERROR,
+  sectorState \in SectorStates,
+    (***********************************************************************)
+    (* The state of a sector at the beginning of a method call.            *)
+    (***********************************************************************)
+
+  sectorStateNext = NULLSTATE,
+    (***********************************************************************)
+    (* The state of a sector at the end of a method call.                  *)
+    (***********************************************************************)
+
+  sectorStateError = NOERROR,
+    (***********************************************************************)
+    (* The error from an invalid sector state transition.                  *)
+    (***********************************************************************)
     
-    \* declaration before a method call
-    declaration \in Declarations \union { NULLDECL },
-    \* declaration after a method call
-    declarationNext = NULLDECL,
+  declaration \in Declarations \union { NULLDECL },
+    (***********************************************************************)
+    (* The declaration of a sector at the beginning of a method call.      *)
+    (***********************************************************************)
+
+  declarationNext = NULLDECL,
+    (***********************************************************************)
+    (* The declaration of a sector at the end of a method call.            *)
+    (***********************************************************************)
     
-    \* consecutive posts failed so far
-    failedPoSts \in 0..2,
-    \* decide whether a fault is being skipped or not
-    skippedFault \in BOOLEAN,
-    \* penalties to be paid by the end of the method call
-    penalties = ZERO,
-    
-    \* last method called
-    methodCalled = NULLMETHOD;
+  failedPoSts \in 0..2,
+    (***********************************************************************)
+    (* The number of consecutive post failed.                              *)
+    (***********************************************************************)
+
+  skippedFault \in BOOLEAN,
+    (***********************************************************************)
+    (* The flag that indicates if a post proof fails.                      *)
+    (***********************************************************************)
+
+  penalties = ZERO,
+    (***********************************************************************)
+    (* The penalty amount paid at the end of a method call.                *)
+    (***********************************************************************)
+  
+  methodCalled = NULLMETHOD;
+    (***********************************************************************)
+    (* The last method called.                                             *)
+    (***********************************************************************)
 
 define
-    \* MessageExecuted - True when we reach end of method call
-    MessageExecuted == pc["miner"] = "End"
+  \* MessageExecuted - True when we reach end of method call
+  MessageExecuted == pc["miner"] = "End"
+    (***********************************************************************)
+    (* When true, the message has been executed.                           *)
+    (***********************************************************************)
 
-    \* NoErrors - True when no error
-    NoErrors == sectorStateError = NOERROR
+  NoErrors == sectorStateError = NOERROR
+    (***********************************************************************)
+    (* When true, the message execution has no error.                      *)
+    (***********************************************************************)
 
-    \* PackTransition - Utility to pack variables into a struct
-    PackTransition(method, state, stateNext, decl, declNext, pen) == [
-        method |-> method,
-        state |-> state,
-        stateNext |-> stateNext,
-        decl |-> decl,
-        declNext |-> declNext,
-        penalties |-> pen
+  PackTransition(method, state, stateNext, decl, declNext, pen) ==
+    (***********************************************************************)
+    (* Utility that packs a list into a struct.                            *)
+    (***********************************************************************)
+    [
+      method |-> method,
+      state |-> state,
+      stateNext |-> stateNext,
+      decl |-> decl,
+      declNext |-> declNext,
+      penalties |-> pen
     ]
 
     \* INVARIANTS
 
-    \* MessageInvariants - All messages are valid or faults are reported
-    MessageInvariants == LET
-        ValidMessage == <<methodCalled, sectorState, sectorStateNext, declaration, declarationNext>> \in StateTransitions
-        ValidMessageNoError ==  ValidMessage /\ NoErrors
-        InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
+  MessageInvariants ==
+    (***********************************************************************)
+    (* All messages are valid or faults are reported.                      *)
+    (***********************************************************************)
+    LET
+      PackedStateTransition == <<
+        methodCalled,
+        sectorState,
+        sectorStateNext,
+        declaration,
+        declarationNext>> 
+      ValidMessage == PackedStateTransition \in StateTransitions
+      ValidMessageNoError ==  ValidMessage /\ NoErrors
+      InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
     IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
 
-    \* PenaltyInvariants - If there are no errors, penalties must be set correctly
-    PenaltiesInvariants == LET
-        ValidPenalty == PackTransition(methodCalled, sectorState, sectorStateNext, declaration, declarationNext, penalties) \in Transitions
+  PenaltiesInvariants ==
+    (***********************************************************************)
+    (* If there are no errors, penalties must be set correctly.            *)
+    (***********************************************************************)
+    LET
+      PackedTransition == PackTransition(
+        methodCalled,
+        sectorState,
+        sectorStateNext,
+        declaration,
+        declarationNext,
+        penalties)
+      ValidPenalty == PackedTransition \in Transitions
     IN MessageExecuted /\ NoErrors => ValidPenalty
 
-    \* Faults utility
+  \* Faults utility
 
-    \* ExpectingProof - WindowPoSt expects a sector proof
-    ExpectingProof == (sectorState = "active" /\ declaration = NULLDECL) \/ (sectorState = "faulty" /\ declaration = "recovered")
-    \* SkippedFault - WindowPoSt expected a proof that did not appear/faulty
-    SkippedFault == ExpectingProof /\ skippedFault
-    \* FailedRecoveryDeclaredFault - A faulty sector is still declared faulty (after being recovered)
-    FailedRecoveryDeclaredFault == sectorState = "faulty" /\ declaration = "faulted"
-    \* ContinuedDeclaredFault - A sector is faulty and continues being so
-    ContinuedDeclaredFault == sectorState = "faulty" /\ declaration = NULLDECL
-    \* NewDeclaredFault - A sector is active and declared as faulty
-    NewDeclaredFault == sectorState = "active" /\ declaration = "faulted"
-    \* DeclaredFault - A sector is declared as faulty
-    DeclaredFault == FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
-    \* RecoveredFault - A sector is recovered
-    RecoveredFault == sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
+  SkippedFault == 
+    (***********************************************************************)
+    (* A SkippedFault occurs when an active sector or a recovered sector   *)
+    (* fails to be proven at WindowPoSt                                    *)
+    (***********************************************************************)
+    LET 
+      ActiveSector == (sectorState = "active" /\ declaration = NULLDECL)
+      RecoverSector == (sectorState = "faulty" /\ declaration = "recovered")
+      ExpectingProof == ActiveSector \/ RecoverSector
+    IN ExpectingProof /\ skippedFault
+  
+  DeclaredFault == 
+    (***********************************************************************)
+    (* A DeclaredFault occurs when a sector is known to be faulty.         *)
+    (***********************************************************************)
+    LET 
+      FailedRecoveryDeclaredFault ==
+        (*******************************************************************)
+        (* A faulty sector is still declared faulty, after being recovered.*)
+        (*******************************************************************)
+        sectorState = "faulty" /\ declaration = "faulted"
+
+      ContinuedDeclaredFault ==
+        (*******************************************************************)
+        (* A sector is faulty and continues being so.                      *)
+        (*******************************************************************)
+        sectorState = "faulty" /\ declaration = NULLDECL
+
+      NewDeclaredFault == sectorState = "active" /\ declaration = "faulted"
+        (*******************************************************************)
+        (* A sector is active and declared as faulty.                      *)
+        (*******************************************************************)
+
+    IN FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
+
+  \* RecoveredSector - A sector is recovered
+  RecoveredSector ==
+    (***********************************************************************)
+    (* A DeclaredFault occurs when a sector is known to be faulty.         *)
+    (***********************************************************************)
+    sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
 
 end define;
 
@@ -197,7 +302,7 @@ begin
 
                             \* - skipped faults
                             \* - failed recovery
-                            if RecoveredFault then
+                            if RecoveredSector then
                                 sectorStateNext := "active";
                             elsif SkippedFault then
                                 if sectorState = "active" then
@@ -268,7 +373,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-8cd236bdfd1a4c8646d9e6dbb5d6bbb3
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-5d73b94474103f39dfe9b20b6bdc1041
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -277,48 +382,102 @@ VARIABLES sectorState, sectorStateNext, sectorStateError, declaration,
 MessageExecuted == pc["miner"] = "End"
 
 
+
+
 NoErrors == sectorStateError = NOERROR
 
 
-PackTransition(method, state, stateNext, decl, declNext, pen) == [
+
+
+PackTransition(method, state, stateNext, decl, declNext, pen) ==
+
+
+
+  [
     method |-> method,
     state |-> state,
     stateNext |-> stateNext,
     decl |-> decl,
     declNext |-> declNext,
     penalties |-> pen
-]
+  ]
 
 
 
+MessageInvariants ==
 
-MessageInvariants == LET
-    ValidMessage == <<methodCalled, sectorState, sectorStateNext, declaration, declarationNext>> \in StateTransitions
+
+
+  LET
+    PackedStateTransition == <<
+      methodCalled,
+      sectorState,
+      sectorStateNext,
+      declaration,
+      declarationNext>>
+    ValidMessage == PackedStateTransition \in StateTransitions
     ValidMessageNoError ==  ValidMessage /\ NoErrors
     InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
-IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
+  IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
 
-
-PenaltiesInvariants == LET
-    ValidPenalty == PackTransition(methodCalled, sectorState, sectorStateNext, declaration, declarationNext, penalties) \in Transitions
-IN MessageExecuted /\ NoErrors => ValidPenalty
+PenaltiesInvariants ==
 
 
 
+  LET
+    PackedTransition == PackTransition(
+      methodCalled,
+      sectorState,
+      sectorStateNext,
+      declaration,
+      declarationNext,
+      penalties)
+    ValidPenalty == PackedTransition \in Transitions
+  IN MessageExecuted /\ NoErrors => ValidPenalty
 
-ExpectingProof == (sectorState = "active" /\ declaration = NULLDECL) \/ (sectorState = "faulty" /\ declaration = "recovered")
 
-SkippedFault == ExpectingProof /\ skippedFault
 
-FailedRecoveryDeclaredFault == sectorState = "faulty" /\ declaration = "faulted"
+SkippedFault ==
 
-ContinuedDeclaredFault == sectorState = "faulty" /\ declaration = NULLDECL
 
-NewDeclaredFault == sectorState = "active" /\ declaration = "faulted"
 
-DeclaredFault == FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
 
-RecoveredFault == sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
+  LET
+    ActiveSector == (sectorState = "active" /\ declaration = NULLDECL)
+    RecoverSector == (sectorState = "faulty" /\ declaration = "recovered")
+    ExpectingProof == ActiveSector \/ RecoverSector
+  IN ExpectingProof /\ skippedFault
+
+DeclaredFault ==
+
+
+
+  LET
+    FailedRecoveryDeclaredFault ==
+
+
+
+      sectorState = "faulty" /\ declaration = "faulted"
+
+    ContinuedDeclaredFault ==
+
+
+
+      sectorState = "faulty" /\ declaration = NULLDECL
+
+    NewDeclaredFault == sectorState = "active" /\ declaration = "faulted"
+
+
+
+
+  IN FailedRecoveryDeclaredFault \/ ContinuedDeclaredFault \/ NewDeclaredFault
+
+
+RecoveredSector ==
+
+
+
+  sectorState = "faulty" /\ declaration = "recovered" /\ ~skippedFault
 
 VARIABLE epoch
 
@@ -412,7 +571,7 @@ DeclareRecovery == /\ pc["miner"] = "DeclareRecovery"
 WindowPoSt == /\ pc["miner"] = "WindowPoSt"
               /\ methodCalled' = "WindowPoSt"
               /\ IF (sectorState = "active" /\ declaration \in { NULLDECL, "faulted" }) \/ sectorState = "faulty"
-                    THEN /\ IF RecoveredFault
+                    THEN /\ IF RecoveredSector
                                THEN /\ sectorStateNext' = "active"
                                     /\ UNCHANGED penalties
                                ELSE /\ IF SkippedFault
@@ -490,5 +649,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-eee899931420eb4ff3697281e9c97be9
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-5045ede687785f445f027149b667a638
 ====
