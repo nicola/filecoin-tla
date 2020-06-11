@@ -17,15 +17,9 @@ T(method, state, stateNext, decl, declNext, pen) ==
     penalties |-> pen
   ]
 
-SectorStates == { precommit, active, faulty, clear }
-  (*************************************************************************)
-  (* The set of all sector states.                                         *)
-  (*************************************************************************)
-
-Declarations == { faulted, recovered }
-  (*************************************************************************)
-  (* The set of all declarations that are considered during WindowPoSt     *)
-  (*************************************************************************)
+(***************************************************************************)
+(* StorageMiner Actor                                                      *)
+(***************************************************************************)
 
 Methods ==
   (*************************************************************************)
@@ -39,6 +33,16 @@ Methods ==
     "DeclareRecovery",
     "TerminateSector"
   }
+
+SectorStates == { precommit, active, faulty, clear }
+  (*************************************************************************)
+  (* The set of all sector states.                                         *)
+  (*************************************************************************)
+
+Declarations == { faulted, recovered }
+  (*************************************************************************)
+  (* The set of all declarations that are considered during WindowPoSt     *)
+  (*************************************************************************)
 
 Transitions ==
   (*************************************************************************)
@@ -140,13 +144,10 @@ Transitions ==
   \union 
 
   (*************************************************************************)
-  (* Termination Faults                                                    *)
-  (* WindowPoSt: Continued Fault (Termination Fault version)               *)
-  (* Same as Continued fault, sector is terminated.                        *)
-  (* WindowPoSt: Recovered Skipped Fault (Termination Fault version)       *)
-  (* Same as Recovered Skipped Fault, sector is terminated.                *)
-  (* WindowPoSt: Failed Recovery Declared Fault (Termination fault)        *)
-  (* Same as Failed Recovery Declared Fault, sector is terminated.         *)
+  (* WindowPoSt: Termination Faults                                        *)
+  (* Continued Fault (Termination Fault version)                           *)
+  (* Recovered Skipped Fault (Termination Fault version)                   *)
+  (* Failed Recovery Declared Fault (Termination fault)                    *)
   (*************************************************************************)
   [
     method: {"WindowPoSt"},
@@ -156,6 +157,59 @@ Transitions ==
     declNext: {NULLDECL},
     penalties: {TF}
   ]
+      
+(***************************************************************************)
+(* Faults                                                                  *)
+(***************************************************************************)
+
+SkippedFault(state, decl, missedPoSt) == 
+  (*************************************************************************)
+  (* A SkippedFault occurs when an active sector or a recovered sector     *)
+  (* fails to be proven at WindowPoSt                                      *)
+  (*************************************************************************)
+  LET 
+    ActiveSector == (state = active /\ decl = NULLDECL)
+    RecoverSector == (state = faulty /\ decl = recovered)
+    ExpectingProof == ActiveSector \/ RecoverSector
+  IN ExpectingProof /\ missedPoSt
+
+DeclaredFault(state, decl) == 
+  (*************************************************************************)
+  (* A DeclaredFault occurs when a sector is known to be faulty.           *)
+  (*************************************************************************)
+  LET 
+    FailedRecoveryDeclaredFault ==
+      (*********************************************************************)
+      (* A faulty sector is still declared faulty, after being recovered.  *)
+      (*********************************************************************)
+      state = faulty /\ decl = faulted
+
+    ContinuedDeclaredFault ==
+      (*********************************************************************)
+      (* A sector is faulty and continues being so.                        *)
+      (*********************************************************************)
+      state = faulty /\ decl = NULLDECL
+
+    NewDeclaredFault ==
+      (*********************************************************************)
+      (* A sector is active and declared as faulty.                        *)
+      (*********************************************************************)
+      state = active /\ decl = faulted
+
+  IN \/ FailedRecoveryDeclaredFault
+      \/ ContinuedDeclaredFault
+      \/ NewDeclaredFault
+
+RecoveredSector(state, decl, missedPost) ==
+  (*************************************************************************)
+  (* A RecoveredSector occurs when a sector is known to be faulty and      *) 
+  (* declared recovered (and the subsequent WindowPoSt is not failed.      *)
+  (*************************************************************************)
+  state = faulty /\ decl = recovered /\ ~missedPost
+
+(***************************************************************************)
+(* Filecoin Application                                                    *)
+(***************************************************************************)
 
 (*--algorithm faults
 variables
@@ -215,52 +269,6 @@ define
     (***********************************************************************)
     (* When true, the message execution has no error and viceversa.        *)
     (***********************************************************************)
-
-  \* Faults utility
-
-  SkippedFault(state, decl, missedPoSt) == 
-    (***********************************************************************)
-    (* A SkippedFault occurs when an active sector or a recovered sector   *)
-    (* fails to be proven at WindowPoSt                                    *)
-    (***********************************************************************)
-    LET 
-      ActiveSector == (state = active /\ decl = NULLDECL)
-      RecoverSector == (state = faulty /\ decl = recovered)
-      ExpectingProof == ActiveSector \/ RecoverSector
-    IN ExpectingProof /\ missedPoSt
-  
-  DeclaredFault(state, decl) == 
-    (***********************************************************************)
-    (* A DeclaredFault occurs when a sector is known to be faulty.         *)
-    (***********************************************************************)
-    LET 
-      FailedRecoveryDeclaredFault ==
-        (*******************************************************************)
-        (* A faulty sector is still declared faulty, after being recovered.*)
-        (*******************************************************************)
-        state = faulty /\ decl = faulted
-
-      ContinuedDeclaredFault ==
-        (*******************************************************************)
-        (* A sector is faulty and continues being so.                      *)
-        (*******************************************************************)
-        state = faulty /\ decl = NULLDECL
-
-      NewDeclaredFault ==
-        (*******************************************************************)
-        (* A sector is active and declared as faulty.                      *)
-        (*******************************************************************)
-        state = active /\ decl = faulted
-
-    IN \/ FailedRecoveryDeclaredFault
-       \/ ContinuedDeclaredFault
-       \/ NewDeclaredFault
-
-  RecoveredSector(state, decl, missedPost) ==
-    (***********************************************************************)
-    (* A DeclaredFault occurs when a sector is known to be faulty.         *)
-    (***********************************************************************)
-    state = faulty /\ decl = recovered /\ ~missedPost
   
   \* INVARIANTS
 
@@ -453,7 +461,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-e14b6a5661a1853517a82fe90384dc37
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-42aa29e9864b38bafad8a81f7b8bfe4f
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -469,52 +477,6 @@ Errors == ~NoErrors
 
 
 
-
-
-
-SkippedFault(state, decl, missedPoSt) ==
-
-
-
-
-  LET
-    ActiveSector == (state = active /\ decl = NULLDECL)
-    RecoverSector == (state = faulty /\ decl = recovered)
-    ExpectingProof == ActiveSector \/ RecoverSector
-  IN ExpectingProof /\ missedPoSt
-
-DeclaredFault(state, decl) ==
-
-
-
-  LET
-    FailedRecoveryDeclaredFault ==
-
-
-
-      state = faulty /\ decl = faulted
-
-    ContinuedDeclaredFault ==
-
-
-
-      state = faulty /\ decl = NULLDECL
-
-    NewDeclaredFault ==
-
-
-
-      state = active /\ decl = faulted
-
-  IN \/ FailedRecoveryDeclaredFault
-     \/ ContinuedDeclaredFault
-     \/ NewDeclaredFault
-
-RecoveredSector(state, decl, missedPost) ==
-
-
-
-  state = faulty /\ decl = recovered /\ ~missedPost
 
 
 
@@ -754,5 +716,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-3c3909a0dce0e75d348b51e70e6d2246
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-bb26c387b689ec17311153807c30f24a
 ====
