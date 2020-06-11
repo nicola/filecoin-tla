@@ -1,22 +1,10 @@
 ------------------------------ MODULE faults --------------------------------
 EXTENDS Integers, TLC
+CONSTANTS precommit, active, faulty, clear
+CONSTANTS FF, SP, TF, ZERO, PreCommitDeposit
+CONSTANTS  NOERROR, NULLSTATE, NULLDECL, NULLMETHOD
 
-\* Faults
-ZERO == "0"
-FF == "ff"
-SP == "sp"
-TF == "tf"
-PreCommitDeposit == "pcd"
-
-(***************************************************************************)
-(* Tooling                                                                 *)
-(***************************************************************************)
-NOERROR == "no sectorStateError"
-NULLSTATE == "null state"
-NULLDECL == "null decl"
-NULLMETHOD == "null method"
-
-Pack(method, state, stateNext, decl, declNext, pen) ==
+T(method, state, stateNext, decl, declNext, pen) ==
   (*************************************************************************)
   (* Utility that packs a list into a struct.                              *)
   (*************************************************************************)
@@ -28,8 +16,6 @@ Pack(method, state, stateNext, decl, declNext, pen) ==
     declNext |-> declNext,
     penalties |-> pen
   ]
-T(method, state, stateNext, decl, declNext, pen) ==
-  Pack(method, state, stateNext, decl, declNext, pen)
 
 SectorStates == { "precommit", "active", "faulty", "clear" }
   (*************************************************************************)
@@ -80,7 +66,6 @@ Transitions ==
     (* An active sector remains active.                                    *)
     (***********************************************************************)
     T("WindowPoSt", "active", NULLSTATE, NULLDECL, NULLDECL, ZERO),
-
     
     (***********************************************************************)
     (* WindowPoSt: Continued Fault                                         *)
@@ -171,15 +156,6 @@ Transitions ==
     penalties: {TF}
   ]
 
-StateTransitions ==
-  (*************************************************************************)
-  (* Same as Transitions without penalties.                                *)
-  (*************************************************************************)
-  {
-    <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> :
-    x \in Transitions
-  }
-
 (*--algorithm faults
 variables
   sectorState \in SectorStates,
@@ -228,7 +204,6 @@ variables
     (***********************************************************************)
 
 define
-  \* MessageExecuted - True when we reach end of method call
   MessageExecuted == pc["miner"] = "End"
     (***********************************************************************)
     (* When true, the message has been executed.                           *)
@@ -239,13 +214,18 @@ define
     (* When true, the message execution has no error.                      *)
     (***********************************************************************)
 
-    \* INVARIANTS
+  \* INVARIANTS
 
   MessageInvariants ==
     (***********************************************************************)
     (* All messages are valid or faults are reported.                      *)
     (***********************************************************************)
     LET
+      StateTransitions ==
+      {
+        <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> :
+        x \in Transitions
+      }
       PackedStateTransition == <<
         methodCalled,
         sectorState,
@@ -262,7 +242,7 @@ define
     (* If there are no errors, penalties must be set correctly.            *)
     (***********************************************************************)
     LET
-      PackedTransition == Pack(
+      PackedTransition == T(
         methodCalled,
         sectorState,
         sectorStateNext,
@@ -458,7 +438,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-5f89b17395e0d9a4b9365570a85b0475
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-53e8264277fe4f40e0fc6c7c2293f933
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -481,6 +461,11 @@ MessageInvariants ==
 
 
   LET
+    StateTransitions ==
+    {
+      <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> :
+      x \in Transitions
+    }
     PackedStateTransition == <<
       methodCalled,
       sectorState,
@@ -497,7 +482,7 @@ PenaltiesInvariants ==
 
 
   LET
-    PackedTransition == Pack(
+    PackedTransition == T(
       methodCalled,
       sectorState,
       sectorStateNext,
@@ -740,5 +725,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-27591c8bb16a9f6f4cf84a3289d686eb
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-b16e35af030f7fb1ec538d2ba4b83a6d
 ====
