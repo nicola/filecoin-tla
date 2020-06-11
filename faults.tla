@@ -395,7 +395,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-c603896c97d273a80f56fdf69c0bc7c0
+\* BEGIN TRANSLATION PCal-c603896c97d273a80f56fdf69c0bc7c0
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc, epoch
@@ -585,7 +585,7 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-a28f482e3fb41897a8d36a572af055af
+\* END TRANSLATION TLA-a28f482e3fb41897a8d36a572af055af
 
 (***************************************************************************)
 (* Invariants********                                                      *)
@@ -640,4 +640,5 @@ PenaltiesInvariants ==
             /\ t.penalties = SP}
       IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
   IN DeclaredFaultsPayFF /\ SkippedFaultsPaySP
-====
+
+=============================================================================
