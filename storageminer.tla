@@ -1,4 +1,5 @@
------------------------------- MODULE faults --------------------------------
+--------------------------- MODULE storageminer -----------------------------
+
 EXTENDS Integers, TLC
 CONSTANTS precommit, active, faulty, clear, done, faulted, recovered
 CONSTANTS FF, SP, TF, ZERO, PreCommitDeposit
