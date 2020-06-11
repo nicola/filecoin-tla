@@ -129,7 +129,6 @@ Transitions ==
     T("DeclareRecovery", faulty, NULLSTATE, NULLDECL, recovered, ZERO)
   }
   \union
-
   (*************************************************************************)
   (* TerminateSector: An active or faulty sector is terminated             *)
   (*************************************************************************)
@@ -142,7 +141,6 @@ Transitions ==
     penalties: {TF}
   ]
   \union 
-
   (*************************************************************************)
   (* WindowPoSt: Termination Faults                                        *)
   (* Continued Fault (Termination Fault version)                           *)
@@ -258,77 +256,13 @@ variables
     (* The last method called.                                             *)
     (***********************************************************************)
 
-define
-  MessageExecuted == pc["miner"] = "End"
-    (***********************************************************************)
-    (* When true, the message has been executed.                           *)
-    (***********************************************************************)
-
-  NoErrors == sectorStateError = NOERROR
-  Errors == ~NoErrors
-    (***********************************************************************)
-    (* When true, the message execution has no error and viceversa.        *)
-    (***********************************************************************)
-  
-  \* INVARIANTS
-
-  MessageInvariants ==
-    (***********************************************************************)
-    (* Messages must valid transitions or must trigger errors.             *)
-    (***********************************************************************)
-    LET
-      PackedTransition ==
-        T(methodCalled, sectorState, sectorStateNext,
-        declaration, declarationNext, penalties)
-
-      ValidMessage == PackedTransition \in Transitions
-      ValidMessageNoError ==  ValidMessage /\ NoErrors
-      InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
-    IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
-
-  PenaltiesInvariants ==
-    (***********************************************************************)
-    (* Each fault has assigned a penalty.                                  *)
-    (***********************************************************************)
-    LET
-      DeclaredFaultsPayFF ==
-        (*******************************************************************)
-        (* DeclaredFaults pay FF at WindowPoSt time when the sector is not *)
-        (* terminated.                                                     *)
-        (*******************************************************************)
-        LET
-          DeclaredFaultsCandidates == 
-            {s \in Transitions:
-              /\ s.method = "WindowPoSt"
-              /\ s.stateNext /= done
-              /\ DeclaredFault(s.state, s.decl)
-              /\ s.penalties = FF}
-        IN DeclaredFaultsCandidates = {s \in Transitions : s.penalties = FF}
-              
-      SkippedFaultsPaySP ==
-        (*******************************************************************)
-        (* SkippedFaults pay SP at WindowPoSt time when the sector is not  *)
-        (* terminated.                                                     *)
-        (*******************************************************************)
-        LET
-          SkippedFaultsCandidates == 
-            {t \in Transitions: 
-              /\ t.method = "WindowPoSt"
-              /\ t.stateNext /= done
-              /\ SkippedFault(t.state, t.decl, TRUE)
-              /\ t.penalties = SP}
-        IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
-
-    IN DeclaredFaultsPayFF /\ SkippedFaultsPaySP
-
-end define;
-
+(***************************************************************************)
+(* Blockchain                                                              *)
+(* A miner can take (in this model), one action per epoch.                 *)
+(***************************************************************************)
 fair+ process miner = "miner"
 variables epoch = 0
 begin
-  \* Blockchain - This is the blockchain utility and runs multiple epochs
-  \* At each epoch, we execute a block and in each block we execute one
-  \* method call
   Blockchain:
     while epoch < 12 do
       epoch := epoch + 1;
@@ -461,75 +395,10 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-42aa29e9864b38bafad8a81f7b8bfe4f
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-c603896c97d273a80f56fdf69c0bc7c0
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
-          pc
-
-(* define statement *)
-MessageExecuted == pc["miner"] = "End"
-
-
-
-
-NoErrors == sectorStateError = NOERROR
-Errors == ~NoErrors
-
-
-
-
-
-
-MessageInvariants ==
-
-
-
-  LET
-    PackedTransition ==
-      T(methodCalled, sectorState, sectorStateNext,
-      declaration, declarationNext, penalties)
-
-    ValidMessage == PackedTransition \in Transitions
-    ValidMessageNoError ==  ValidMessage /\ NoErrors
-    InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
-  IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
-
-PenaltiesInvariants ==
-
-
-
-  LET
-    DeclaredFaultsPayFF ==
-
-
-
-
-      LET
-        DeclaredFaultsCandidates ==
-          {s \in Transitions:
-            /\ s.method = "WindowPoSt"
-            /\ s.stateNext /= done
-            /\ DeclaredFault(s.state, s.decl)
-            /\ s.penalties = FF}
-      IN DeclaredFaultsCandidates = {s \in Transitions : s.penalties = FF}
-
-    SkippedFaultsPaySP ==
-
-
-
-
-      LET
-        SkippedFaultsCandidates ==
-          {t \in Transitions:
-            /\ t.method = "WindowPoSt"
-            /\ t.stateNext /= done
-            /\ SkippedFault(t.state, t.decl, TRUE)
-            /\ t.penalties = SP}
-      IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
-
-  IN DeclaredFaultsPayFF /\ SkippedFaultsPaySP
-
-VARIABLE epoch
+          pc, epoch
 
 vars == << sectorState, sectorStateNext, sectorStateError, declaration, 
            declarationNext, failedPoSts, skippedFault, penalties, 
@@ -716,5 +585,59 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-bb26c387b689ec17311153807c30f24a
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-a28f482e3fb41897a8d36a572af055af
+
+(***************************************************************************)
+(* Invariants********                                                      *)
+(***************************************************************************)
+
+MessageInvariants ==
+  (*************************************************************************)
+  (* Messages must valid transitions or must trigger errors.               *)
+  (*************************************************************************)
+  LET
+    PackedTransition ==
+      T(methodCalled, sectorState, sectorStateNext,
+      declaration, declarationNext, penalties)
+    MessageExecuted == pc["miner"] = "End"
+    NoErrors == sectorStateError = NOERROR
+
+    ValidMessage == PackedTransition \in Transitions
+    ValidMessageNoError ==  ValidMessage /\ NoErrors
+    InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
+  IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
+
+PenaltiesInvariants ==
+  (*************************************************************************)
+  (* Each fault has assigned a penalty.                                    *)
+  (*************************************************************************)
+  LET
+    DeclaredFaultsPayFF ==
+      (*********************************************************************)
+      (* DeclaredFaults pay FF at WindowPoSt time when the sector is not   *)
+      (* terminated.                                                       *)
+      (*********************************************************************)
+      LET
+        DeclaredFaultsCandidates == 
+          {s \in Transitions:
+            /\ s.method = "WindowPoSt"
+            /\ s.stateNext /= done
+            /\ DeclaredFault(s.state, s.decl)
+            /\ s.penalties = FF}
+      IN DeclaredFaultsCandidates = {s \in Transitions : s.penalties = FF}
+            
+    SkippedFaultsPaySP ==
+      (*********************************************************************)
+      (* SkippedFaults pay SP at WindowPoSt time when the sector is not    *)
+      (* terminated.                                                       *)
+      (*********************************************************************)
+      LET
+        SkippedFaultsCandidates == 
+          {t \in Transitions: 
+            /\ t.method = "WindowPoSt"
+            /\ t.stateNext /= done
+            /\ SkippedFault(t.state, t.decl, TRUE)
+            /\ t.penalties = SP}
+      IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
+  IN DeclaredFaultsPayFF /\ SkippedFaultsPaySP
 ====
