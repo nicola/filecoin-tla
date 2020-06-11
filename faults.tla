@@ -81,16 +81,17 @@ Transitions ==
     T("WindowPoSt", active, faulty, faulted, NULLDECL, FF),
 
     (***********************************************************************)
+    (* WindowPoSt: Failed Recovery Declared Fault                          *)
+    (* A faulty sector declared as recovered and then declared again as    *)
+    (* faulted becomes faulty                                              *)
+    (***********************************************************************)
+    T("WindowPoSt", faulty, NULLSTATE, faulted, NULLDECL, FF),
+
+    (***********************************************************************)
     (* WindowPoSt: Active Skipped Faults                                   *)
     (* An active sector that is not declared faulted becomes faulty.       *)
     (***********************************************************************)
     T("WindowPoSt", active, faulty, NULLDECL, NULLDECL, SP),
-
-    (***********************************************************************)
-    (* WindowPoSt: Recovered Sector                                        *)
-    (* A faulty sector declared as recovered becomes active.               *)
-    (***********************************************************************)
-    T("WindowPoSt", faulty, active, recovered, NULLDECL, ZERO),
 
     (***********************************************************************)
     (* WindowPoSt: Recovered Skipped Fault                                 *)
@@ -100,11 +101,10 @@ Transitions ==
     T("WindowPoSt", faulty, NULLSTATE, recovered, NULLDECL, SP),
 
     (***********************************************************************)
-    (* WindowPoSt: Failed Recovery Declared Fault                          *)
-    (* A faulty sector declared as recovered and then declared again as    *)
-    (* faulted becomes faulty                                              *)
+    (* WindowPoSt: Recovered Sector                                        *)
+    (* A faulty sector declared as recovered becomes active.               *)
     (***********************************************************************)
-    T("WindowPoSt", faulty, NULLSTATE, faulted, NULLDECL, FF),
+    T("WindowPoSt", faulty, active, recovered, NULLDECL, ZERO),
 
     (***********************************************************************)
     (* DeclareFault: New Declared Fault                                    *)
@@ -198,7 +198,7 @@ variables
     (***********************************************************************)
     (* The penalty amount paid at the end of a method call.                *)
     (***********************************************************************)
-  
+
   methodCalled = NULLMETHOD;
     (***********************************************************************)
     (* The last method called.                                             *)
@@ -215,6 +215,52 @@ define
     (* When true, the message execution has no error.                      *)
     (***********************************************************************)
 
+  \* Faults utility
+
+  SkippedFault(state, decl, missedPoSt) == 
+    (***********************************************************************)
+    (* A SkippedFault occurs when an active sector or a recovered sector   *)
+    (* fails to be proven at WindowPoSt                                    *)
+    (***********************************************************************)
+    LET 
+      ActiveSector == (state = active /\ decl = NULLDECL)
+      RecoverSector == (state = faulty /\ decl = recovered)
+      ExpectingProof == ActiveSector \/ RecoverSector
+    IN ExpectingProof /\ missedPoSt
+  
+  DeclaredFault(state, decl) == 
+    (***********************************************************************)
+    (* A DeclaredFault occurs when a sector is known to be faulty.         *)
+    (***********************************************************************)
+    LET 
+      FailedRecoveryDeclaredFault ==
+        (*******************************************************************)
+        (* A faulty sector is still declared faulty, after being recovered.*)
+        (*******************************************************************)
+        state = faulty /\ decl = faulted
+
+      ContinuedDeclaredFault ==
+        (*******************************************************************)
+        (* A sector is faulty and continues being so.                      *)
+        (*******************************************************************)
+        state = faulty /\ decl = NULLDECL
+
+      NewDeclaredFault ==
+        (*******************************************************************)
+        (* A sector is active and declared as faulty.                      *)
+        (*******************************************************************)
+        state = active /\ decl = faulted
+
+    IN \/ FailedRecoveryDeclaredFault
+       \/ ContinuedDeclaredFault
+       \/ NewDeclaredFault
+
+  RecoveredSector(state, decl, missedPost) ==
+    (***********************************************************************)
+    (* A DeclaredFault occurs when a sector is known to be faulty.         *)
+    (***********************************************************************)
+    state = faulty /\ decl = recovered /\ ~missedPost
+  
   \* INVARIANTS
 
   MessageInvariants ==
@@ -243,61 +289,34 @@ define
     (* If there are no errors, penalties must be set correctly.            *)
     (***********************************************************************)
     LET
-      PackedTransition == T(
-        methodCalled,
-        sectorState,
-        sectorStateNext,
-        declaration,
-        declarationNext,
-        penalties)
+      PackedTransition ==
+        T(methodCalled, sectorState, sectorStateNext,
+        declaration, declarationNext, penalties)
       ValidPenalty == PackedTransition \in Transitions
-    IN MessageExecuted /\ NoErrors => ValidPenalty
 
-  \* Faults utility
+      DeclaredFaultsPayFF ==
+        LET
+          DeclaredFaultsCandidates == 
+            {s \in Transitions:
+              /\ s.method = "WindowPoSt"
+              /\ s.stateNext /= done
+              /\ DeclaredFault(s.state, s.decl)
+              /\ s.penalties = FF}
+        IN DeclaredFaultsCandidates = {s \in Transitions : s.penalties = FF}
+              
+      SkippedFaultsPaySP ==
+        LET
+          SkippedFaultsCandidates == 
+            {t \in Transitions: 
+              /\ t.method = "WindowPoSt"
+              /\ t.stateNext /= done
+              /\ SkippedFault(t.state, t.decl, TRUE)
+              /\ t.penalties = SP}
+        IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
 
-  SkippedFault == 
-    (***********************************************************************)
-    (* A SkippedFault occurs when an active sector or a recovered sector   *)
-    (* fails to be proven at WindowPoSt                                    *)
-    (***********************************************************************)
-    LET 
-      ActiveSector == (sectorState = active /\ declaration = NULLDECL)
-      RecoverSector == (sectorState = faulty /\ declaration = recovered)
-      ExpectingProof == ActiveSector \/ RecoverSector
-    IN ExpectingProof /\ skippedFault
-  
-  DeclaredFault == 
-    (***********************************************************************)
-    (* A DeclaredFault occurs when a sector is known to be faulty.         *)
-    (***********************************************************************)
-    LET 
-      FailedRecoveryDeclaredFault ==
-        (*******************************************************************)
-        (* A faulty sector is still declared faulty, after being recovered.*)
-        (*******************************************************************)
-        sectorState = faulty /\ declaration = faulted
-
-      ContinuedDeclaredFault ==
-        (*******************************************************************)
-        (* A sector is faulty and continues being so.                      *)
-        (*******************************************************************)
-        sectorState = faulty /\ declaration = NULLDECL
-
-      NewDeclaredFault == sectorState = active /\ declaration = faulted
-        (*******************************************************************)
-        (* A sector is active and declared as faulty.                      *)
-        (*******************************************************************)
-
-    IN \/ FailedRecoveryDeclaredFault
-       \/ ContinuedDeclaredFault
-       \/ NewDeclaredFault
-
-  \* RecoveredSector - A sector is recovered
-  RecoveredSector ==
-    (***********************************************************************)
-    (* A DeclaredFault occurs when a sector is known to be faulty.         *)
-    (***********************************************************************)
-    sectorState = faulty /\ declaration = recovered /\ ~skippedFault
+    IN
+    /\ DeclaredFaultsPayFF /\ SkippedFaultsPaySP
+    /\ MessageExecuted /\ NoErrors => ValidPenalty
 
 end define;
 
@@ -367,10 +386,10 @@ begin
 
               \* - skipped faults
               \* - failed recovery
-              if RecoveredSector then
+              if RecoveredSector(sectorState, declaration, skippedFault) then
                 sectorStateNext := active;
 
-              elsif SkippedFault then
+              elsif SkippedFault(sectorState, declaration, skippedFault) then
                 if sectorState = active then
                   sectorStateNext := faulty;
                 end if;
@@ -379,7 +398,7 @@ begin
               \* - continued faults
               \* - recovered fault reported faulty again
               \* - new declared faults
-              elsif DeclaredFault then
+              elsif DeclaredFault(sectorState, declaration) then
                 if sectorState = active then
                   sectorStateNext := faulty;
                 end if;
@@ -439,7 +458,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-1f0a948e5f7bfdf807663c04f77b4cba
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-07af792cabb22672a01f15e1878cbc98
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -454,6 +473,52 @@ NoErrors == sectorStateError = NOERROR
 
 
 
+
+
+
+SkippedFault(state, decl, missedPoSt) ==
+
+
+
+
+  LET
+    ActiveSector == (state = active /\ decl = NULLDECL)
+    RecoverSector == (state = faulty /\ decl = recovered)
+    ExpectingProof == ActiveSector \/ RecoverSector
+  IN ExpectingProof /\ missedPoSt
+
+DeclaredFault(state, decl) ==
+
+
+
+  LET
+    FailedRecoveryDeclaredFault ==
+
+
+
+      state = faulty /\ decl = faulted
+
+    ContinuedDeclaredFault ==
+
+
+
+      state = faulty /\ decl = NULLDECL
+
+    NewDeclaredFault ==
+
+
+
+      state = active /\ decl = faulted
+
+  IN \/ FailedRecoveryDeclaredFault
+     \/ ContinuedDeclaredFault
+     \/ NewDeclaredFault
+
+RecoveredSector(state, decl, missedPost) ==
+
+
+
+  state = faulty /\ decl = recovered /\ ~missedPost
 
 
 
@@ -483,61 +548,34 @@ PenaltiesInvariants ==
 
 
   LET
-    PackedTransition == T(
-      methodCalled,
-      sectorState,
-      sectorStateNext,
-      declaration,
-      declarationNext,
-      penalties)
+    PackedTransition ==
+      T(methodCalled, sectorState, sectorStateNext,
+      declaration, declarationNext, penalties)
     ValidPenalty == PackedTransition \in Transitions
-  IN MessageExecuted /\ NoErrors => ValidPenalty
 
+    DeclaredFaultsPayFF ==
+      LET
+        DeclaredFaultsCandidates ==
+          {s \in Transitions:
+            /\ s.method = "WindowPoSt"
+            /\ s.stateNext /= done
+            /\ DeclaredFault(s.state, s.decl)
+            /\ s.penalties = FF}
+      IN DeclaredFaultsCandidates = {s \in Transitions : s.penalties = FF}
 
+    SkippedFaultsPaySP ==
+      LET
+        SkippedFaultsCandidates ==
+          {t \in Transitions:
+            /\ t.method = "WindowPoSt"
+            /\ t.stateNext /= done
+            /\ SkippedFault(t.state, t.decl, TRUE)
+            /\ t.penalties = SP}
+      IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
 
-SkippedFault ==
-
-
-
-
-  LET
-    ActiveSector == (sectorState = active /\ declaration = NULLDECL)
-    RecoverSector == (sectorState = faulty /\ declaration = recovered)
-    ExpectingProof == ActiveSector \/ RecoverSector
-  IN ExpectingProof /\ skippedFault
-
-DeclaredFault ==
-
-
-
-  LET
-    FailedRecoveryDeclaredFault ==
-
-
-
-      sectorState = faulty /\ declaration = faulted
-
-    ContinuedDeclaredFault ==
-
-
-
-      sectorState = faulty /\ declaration = NULLDECL
-
-    NewDeclaredFault == sectorState = active /\ declaration = faulted
-
-
-
-
-  IN \/ FailedRecoveryDeclaredFault
-     \/ ContinuedDeclaredFault
-     \/ NewDeclaredFault
-
-
-RecoveredSector ==
-
-
-
-  sectorState = faulty /\ declaration = recovered /\ ~skippedFault
+  IN
+  /\ DeclaredFaultsPayFF /\ SkippedFaultsPaySP
+  /\ MessageExecuted /\ NoErrors => ValidPenalty
 
 VARIABLE epoch
 
@@ -646,16 +684,16 @@ WindowPoSt == /\ pc["miner"] = "WindowPoSt"
               /\ methodCalled' = "WindowPoSt"
               /\ IF \/ (sectorState = active /\ declaration \in { NULLDECL, faulted })
                     \/ sectorState = faulty
-                    THEN /\ IF RecoveredSector
+                    THEN /\ IF RecoveredSector(sectorState, declaration, skippedFault)
                                THEN /\ sectorStateNext' = active
                                     /\ UNCHANGED penalties
-                               ELSE /\ IF SkippedFault
+                               ELSE /\ IF SkippedFault(sectorState, declaration, skippedFault)
                                           THEN /\ IF sectorState = active
                                                      THEN /\ sectorStateNext' = faulty
                                                      ELSE /\ TRUE
                                                           /\ UNCHANGED sectorStateNext
                                                /\ penalties' = SP
-                                          ELSE /\ IF DeclaredFault
+                                          ELSE /\ IF DeclaredFault(sectorState, declaration)
                                                      THEN /\ IF sectorState = active
                                                                 THEN /\ sectorStateNext' = faulty
                                                                 ELSE /\ TRUE
@@ -726,5 +764,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-9709dd9c4ba42e01d1d2463ef6167ccb
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-84b7be34a909a22bbcc77d07a5a2e072
 ====
