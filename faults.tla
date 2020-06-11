@@ -211,8 +211,9 @@ define
     (***********************************************************************)
 
   NoErrors == sectorStateError = NOERROR
+  Errors == ~NoErrors
     (***********************************************************************)
-    (* When true, the message execution has no error.                      *)
+    (* When true, the message execution has no error and viceversa.        *)
     (***********************************************************************)
 
   \* Faults utility
@@ -265,36 +266,28 @@ define
 
   MessageInvariants ==
     (***********************************************************************)
-    (* All messages are valid or faults are reported.                      *)
+    (* Messages must valid transitions or must trigger errors.             *)
     (***********************************************************************)
     LET
-      StateTransitions ==
-      {
-        <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> :
-        x \in Transitions
-      }
-      PackedStateTransition == <<
-        methodCalled,
-        sectorState,
-        sectorStateNext,
-        declaration,
-        declarationNext>> 
-      ValidMessage == PackedStateTransition \in StateTransitions
+      PackedTransition ==
+        T(methodCalled, sectorState, sectorStateNext,
+        declaration, declarationNext, penalties)
+
+      ValidMessage == PackedTransition \in Transitions
       ValidMessageNoError ==  ValidMessage /\ NoErrors
       InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
     IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
 
   PenaltiesInvariants ==
     (***********************************************************************)
-    (* If there are no errors, penalties must be set correctly.            *)
+    (* Each fault has assigned a penalty.                                  *)
     (***********************************************************************)
     LET
-      PackedTransition ==
-        T(methodCalled, sectorState, sectorStateNext,
-        declaration, declarationNext, penalties)
-      ValidPenalty == PackedTransition \in Transitions
-
       DeclaredFaultsPayFF ==
+        (*******************************************************************)
+        (* DeclaredFaults pay FF at WindowPoSt time when the sector is not *)
+        (* terminated.                                                     *)
+        (*******************************************************************)
         LET
           DeclaredFaultsCandidates == 
             {s \in Transitions:
@@ -305,6 +298,10 @@ define
         IN DeclaredFaultsCandidates = {s \in Transitions : s.penalties = FF}
               
       SkippedFaultsPaySP ==
+        (*******************************************************************)
+        (* SkippedFaults pay SP at WindowPoSt time when the sector is not  *)
+        (* terminated.                                                     *)
+        (*******************************************************************)
         LET
           SkippedFaultsCandidates == 
             {t \in Transitions: 
@@ -314,9 +311,7 @@ define
               /\ t.penalties = SP}
         IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
 
-    IN
-    /\ DeclaredFaultsPayFF /\ SkippedFaultsPaySP
-    /\ MessageExecuted /\ NoErrors => ValidPenalty
+    IN DeclaredFaultsPayFF /\ SkippedFaultsPaySP
 
 end define;
 
@@ -458,7 +453,7 @@ end process;
 end algorithm; *)
 
 
-\* BEGIN TRANSLATION - the hash of the PCal code: PCal-07af792cabb22672a01f15e1878cbc98
+\* BEGIN TRANSLATION - the hash of the PCal code: PCal-e14b6a5661a1853517a82fe90384dc37
 VARIABLES sectorState, sectorStateNext, sectorStateError, declaration, 
           declarationNext, failedPoSts, skippedFault, penalties, methodCalled, 
           pc
@@ -470,6 +465,7 @@ MessageExecuted == pc["miner"] = "End"
 
 
 NoErrors == sectorStateError = NOERROR
+Errors == ~NoErrors
 
 
 
@@ -527,18 +523,11 @@ MessageInvariants ==
 
 
   LET
-    StateTransitions ==
-    {
-      <<x["method"], x["state"], x["stateNext"], x["decl"], x["declNext"]>> :
-      x \in Transitions
-    }
-    PackedStateTransition == <<
-      methodCalled,
-      sectorState,
-      sectorStateNext,
-      declaration,
-      declarationNext>>
-    ValidMessage == PackedStateTransition \in StateTransitions
+    PackedTransition ==
+      T(methodCalled, sectorState, sectorStateNext,
+      declaration, declarationNext, penalties)
+
+    ValidMessage == PackedTransition \in Transitions
     ValidMessageNoError ==  ValidMessage /\ NoErrors
     InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
   IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
@@ -548,12 +537,11 @@ PenaltiesInvariants ==
 
 
   LET
-    PackedTransition ==
-      T(methodCalled, sectorState, sectorStateNext,
-      declaration, declarationNext, penalties)
-    ValidPenalty == PackedTransition \in Transitions
-
     DeclaredFaultsPayFF ==
+
+
+
+
       LET
         DeclaredFaultsCandidates ==
           {s \in Transitions:
@@ -564,6 +552,10 @@ PenaltiesInvariants ==
       IN DeclaredFaultsCandidates = {s \in Transitions : s.penalties = FF}
 
     SkippedFaultsPaySP ==
+
+
+
+
       LET
         SkippedFaultsCandidates ==
           {t \in Transitions:
@@ -573,9 +565,7 @@ PenaltiesInvariants ==
             /\ t.penalties = SP}
       IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
 
-  IN
-  /\ DeclaredFaultsPayFF /\ SkippedFaultsPaySP
-  /\ MessageExecuted /\ NoErrors => ValidPenalty
+  IN DeclaredFaultsPayFF /\ SkippedFaultsPaySP
 
 VARIABLE epoch
 
@@ -764,5 +754,5 @@ Spec == /\ Init /\ [][Next]_vars
 
 Termination == <>(\A self \in ProcSet: pc[self] = "Done")
 
-\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-84b7be34a909a22bbcc77d07a5a2e072
+\* END TRANSLATION - the hash of the generated TLA code (remove to silence divergence warnings): TLA-3c3909a0dce0e75d348b51e70e6d2246
 ====
