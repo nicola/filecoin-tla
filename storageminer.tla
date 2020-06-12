@@ -1,9 +1,10 @@
 --------------------------- MODULE storageminer -----------------------------
 
-EXTENDS Integers, TLC
+EXTENDS Integers, TLC, FiniteSets
 CONSTANTS precommit, active, faulty, clear, done, faulted, recovered
 CONSTANTS FF, SP, TF, ZERO, PreCommitDeposit
 CONSTANTS  NOERROR, NULLSTATE, NULLDECL, NULLMETHOD
+CONSTANTS RegisteredProofs
 
 T(method, state, stateNext, decl, declNext, pen) ==
   (*************************************************************************)
@@ -207,6 +208,42 @@ RecoveredSector(state, decl, missedPost) ==
   state = faulty /\ decl = recovered /\ ~missedPost
 
 (***************************************************************************)
+(* PreCommit                                                               *)
+(***************************************************************************)
+
+SectorPreCommitOnChainInfo ==
+  (*************************************************************************)
+  (* Input to PreCommit method                                             *)
+  (*************************************************************************)
+  [
+    RegisteredProof: RegisteredProofs \union {"wrong registered proof"},
+    SectorNumber: {"SectorID1", "SectorID2"},
+    SealCid: {"SealCID"},
+    SealRandEpoch: {
+      "BeforeMaxSealDuration or CurrentOrFutureEpoch",
+      "Valid"
+    },
+    DealIDs: {<<>>, <<"deal">>, <<"invalid deal">>, <<"deal1", "deal2">>},
+    Expiration: {
+      "LessMinSectorLifeTime or MoreMaxSectorLifeTime",
+      "Valid"
+    }
+  ]
+
+ValidPreCommitOnChainInfo(info, ids) ==
+  (*************************************************************************)
+  (* Validating inputs to PreCommit method                                 *)
+  (* - info.RegisteredProof is valid                                       *)
+  (* - info.SectorNumber is not in use                                     *)
+  (* - info.SealRandEpoch is not between MaxSealDurantion and Current-1    *)
+  (* - info.Expiration is not between Min and Max SectorLifetime           *)
+  (*************************************************************************)
+  /\ info.RegisteredProof \in RegisteredProofs
+  /\ ~(info.SectorNumber \in ids)
+  /\ info.SealRandEpoch /= "BeforeMaxSealDuration or CurrentOrFutureEpoch"
+  /\ info.Expiration /= "LessMinSectorLifeTime or MoreMaxSectorLifeTime"
+
+(***************************************************************************)
 (* Filecoin Application                                                    *)
 (***************************************************************************)
 
@@ -236,7 +273,17 @@ variables
     (***********************************************************************)
     (* The declaration of a sector at the end of a method call.            *)
     (***********************************************************************)
-    
+
+  minerSectorIDs \in {{}, {"SectorID1"}},
+    (***********************************************************************)
+    (* SectorIDs currently in use.                                         *)
+    (***********************************************************************)
+
+  minerSectorIDsNext = {},
+    (***********************************************************************)
+    (* Updated set of SectorIDs at the end of a method call.               *)
+    (***********************************************************************)
+
   failedPoSts \in 0..2,
     (***********************************************************************)
     (* The number of consecutive post failed.                              *)
@@ -250,6 +297,11 @@ variables
   penalties = ZERO,
     (***********************************************************************)
     (* The penalty amount paid at the end of a method call.                *)
+    (***********************************************************************)
+
+  methodError = NOERROR,
+    (***********************************************************************)
+    (* The error from an invalid method execution.                         *)
     (***********************************************************************)
 
   methodCalled = NULLMETHOD;
@@ -273,7 +325,14 @@ begin
             methodCalled := "PreCommit";
             if sectorState = clear /\ declaration = NULLDECL then
               \* Mark sector as committed
-              sectorStateNext := precommit;
+              with sectorInfo \in SectorPreCommitOnChainInfo do
+                if ValidPreCommitOnChainInfo(sectorInfo, minerSectorIDs) then
+                  sectorStateNext := precommit;
+                  minerSectorIDsNext := minerSectorIDs \union {sectorInfo.SectorNumber};
+                else
+                  methodError := "invalid precommit"
+                end if;
+              end with;
             else
               sectorStateError := "invalid precommit";
             end if;
@@ -372,7 +431,10 @@ begin
           if sectorStateNext /= NULLSTATE then
             sectorState := sectorStateNext;
           end if;
-
+          if minerSectorIDsNext /= {} then
+            minerSectorIDs := minerSectorIDsNext;
+            minerSectorIDsNext := {};
+          end if;
           if methodCalled = "WindowPoSt" then
             declaration := NULLDECL;
           else
@@ -385,7 +447,10 @@ begin
           declarationNext := NULLDECL;
           sectorStateNext := NULLSTATE;
           penalties := ZERO;
+
+          \* Reset errors
           sectorStateError := NOERROR;
+          methodError := NOERROR;
           with x \in BOOLEAN  do
             skippedFault := x;
           end with; 
@@ -402,6 +467,12 @@ end algorithm; *)
 (***************************************************************************)
 (* Invariants********                                                      *)
 (***************************************************************************)
+MessageExecuted == pc["miner"] = "End"
+NoStateTransitionError == sectorStateError = NOERROR
+BadInputs == methodError /= NOERROR
+NoErrors == NoStateTransitionError /\ ~BadInputs
+MessageSucceeded == MessageExecuted => NoErrors
+MessageFailed == MessageExecuted => ~NoErrors
 
 MessageInvariants ==
   (*************************************************************************)
@@ -411,13 +482,26 @@ MessageInvariants ==
     PackedTransition ==
       T(methodCalled, sectorState, sectorStateNext,
       declaration, declarationNext, penalties)
-    MessageExecuted == pc["miner"] = "End"
-    NoErrors == sectorStateError = NOERROR
 
-    ValidMessage == PackedTransition \in Transitions
-    ValidMessageNoError ==  ValidMessage /\ NoErrors
-    InvalidMessageHaveError == ~ValidMessage /\ ~NoErrors
-  IN MessageExecuted => ValidMessageNoError \/ InvalidMessageHaveError
+    ValidTransition == PackedTransition \in Transitions
+    ValidTransitionNoError ==  ValidTransition /\ NoStateTransitionError
+    InvalidMessageHaveError == ~ValidTransition /\ ~NoStateTransitionError
+  IN MessageExecuted =>
+    \/ ValidTransitionNoError
+    \/ InvalidMessageHaveError
+    \/ BadInputs
+
+SectorIDInvariants == LET
+  (*************************************************************************)
+  (* SectorIDs can only be assigned if not currently in use                *)
+  (*************************************************************************)
+    NewId == Cardinality(minerSectorIDsNext) > Cardinality(minerSectorIDs)
+    IdRemoved == Cardinality(minerSectorIDsNext) < Cardinality(minerSectorIDs)
+
+    NewIdOnPrecommitOnly ==
+      MessageSucceeded /\ methodCalled = "PreCommit" <=> NewId
+
+  IN NewIdOnPrecommitOnly
 
 PenaltiesInvariants ==
   (*************************************************************************)
