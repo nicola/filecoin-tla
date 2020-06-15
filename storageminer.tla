@@ -289,11 +289,6 @@ variables
     (* The number of consecutive post failed.                              *)
     (***********************************************************************)
 
-  skippedFault \in BOOLEAN,
-    (***********************************************************************)
-    (* The flag that indicates if a post proof fails.                      *)
-    (***********************************************************************)
-
   penalties = ZERO,
     (***********************************************************************)
     (* The penalty amount paid at the end of a method call.                *)
@@ -381,27 +376,21 @@ begin
             if \/ (sectorState = active /\ declaration \in { NULLDECL, faulted })
                \/ sectorState = faulty then
 
-              \* - skipped faults
-              \* - failed recovery
-              if RecoveredSector(sectorState, declaration, skippedFault) then
-                sectorStateNext := active;
-
-              elsif SkippedFault(sectorState, declaration, skippedFault) then
-                if sectorState = active then
-                  sectorStateNext := faulty;
+              with skippedFault \in BOOLEAN  do
+                if RecoveredSector(sectorState, declaration, skippedFault) then
+                  sectorStateNext := active;
+                elsif SkippedFault(sectorState, declaration, skippedFault) then
+                  if sectorState = active then
+                    sectorStateNext := faulty;
+                  end if;
+                  penalties := SP;
+                elsif DeclaredFault(sectorState, declaration) then
+                  if sectorState = active then
+                    sectorStateNext := faulty;
+                  end if;
+                  penalties := FF;
                 end if;
-                penalties := SP;
-
-              \* - continued faults
-              \* - recovered fault reported faulty again
-              \* - new declared faults
-              elsif DeclaredFault(sectorState, declaration) then
-                if sectorState = active then
-                  sectorStateNext := faulty;
-                end if;
-                penalties := FF;
-              \* - recovered
-              end if;
+              end with;
 
               \* Update faults counter when the sector is faulty
               \* either the sector is faulty already
@@ -451,9 +440,6 @@ begin
           \* Reset errors
           sectorStateError := NOERROR;
           methodError := NOERROR;
-          with x \in BOOLEAN  do
-            skippedFault := x;
-          end with; 
 
     end while;
 end process;
