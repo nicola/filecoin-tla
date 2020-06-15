@@ -3,8 +3,22 @@
 EXTENDS Integers, TLC, FiniteSets
 CONSTANTS precommit, active, faulty, clear, done, faulted, recovered
 CONSTANTS FF, SP, TF, ZERO, PreCommitDeposit
-CONSTANTS  NOERROR, NULLSTATE, NULLDECL, NULLMETHOD
+CONSTANTS  NOERROR, NULLSTATE, NULLDECL, NULLMETHOD, Proof1
 CONSTANTS RegisteredProofs
+
+NULLPRECOMMITSECTORINFO == [
+  RegisteredProof |-> Proof1,
+  SectorNumber|-> "",
+  SealCid|-> "",
+  SealRandEpoch|-> "",
+  DealIDs|-> <<>>,
+  Expiration|-> ""
+]
+NULLPRECOMMITONCHAINFO == [
+    Info |-> NULLPRECOMMITSECTORINFO,
+    PreCommitDeposit |-> "",
+    PreCommitEpoch |-> ""
+  ]
 
 T(method, state, stateNext, decl, declNext, pen) ==
   (*************************************************************************)
@@ -59,7 +73,7 @@ Transitions ==
   (*************************************************************************)
   {
     (***********************************************************************)
-    (* Precommit: A clear sector is precommitted (clear ->  precommit).    *)
+    (* PreCommit: A clear sector is precommitted (clear ->  precommit).    *)
     (***********************************************************************)
     T("PreCommit", clear, precommit, NULLDECL, NULLDECL, ZERO),
 
@@ -211,7 +225,7 @@ RecoveredSector(state, decl, missedPost) ==
 (* PreCommit                                                               *)
 (***************************************************************************)
 
-SectorPreCommitOnChainInfo ==
+SectorPreCommitInfo ==
   (*************************************************************************)
   (* Input to PreCommit method                                             *)
   (*************************************************************************)
@@ -223,25 +237,40 @@ SectorPreCommitOnChainInfo ==
       "BeforeMaxSealDuration or CurrentOrFutureEpoch",
       "Valid"
     },
-    DealIDs: {<<>>, <<"deal">>, <<"invalid deal">>, <<"deal1", "deal2">>},
+    DealIDs: {<<>>, <<"deal">>, <<"invalid deal">>},
     Expiration: {
       "LessMinSectorLifeTime or MoreMaxSectorLifeTime",
       "Valid"
     }
   ]
 
-ValidPreCommitOnChainInfo(info, ids) ==
+ValidSectorPreCommitInfo(info) ==
   (*************************************************************************)
   (* Validating inputs to PreCommit method                                 *)
   (* - info.RegisteredProof is valid                                       *)
   (* - info.SectorNumber is not in use                                     *)
   (* - info.SealRandEpoch is not between MaxSealDurantion and Current-1    *)
-  (* - info.Expiration is not between Min and Max SectorLifetime           *)
+  (* - info.Expiration is between Min and Max SectorLifetime               *)
   (*************************************************************************)
   /\ info.RegisteredProof \in RegisteredProofs
-  /\ ~(info.SectorNumber \in ids)
   /\ info.SealRandEpoch /= "BeforeMaxSealDuration or CurrentOrFutureEpoch"
   /\ info.Expiration /= "LessMinSectorLifeTime or MoreMaxSectorLifeTime"
+
+SectorPreCommitOnChainInfo ==
+  [
+    Info: {x \in SectorPreCommitInfo: ValidSectorPreCommitInfo(x)},
+    PreCommitDeposit: {PreCommitDeposit},
+    PreCommitEpoch: {"ValidPreCommitEpoch"}
+  ]
+
+AllValidPreCommittedSectors ==
+  LET
+    ValidPreCommitOnChainInfoFor(SectorNumber) ==
+      { x \in SectorPreCommitOnChainInfo: x.Info.SectorNumber = SectorNumber }
+  IN [
+    SectorID1: ValidPreCommitOnChainInfoFor("SectorID1") \union {NULLPRECOMMITONCHAINFO},
+    SectorID2: ValidPreCommitOnChainInfoFor("SectorID2") \union {NULLPRECOMMITONCHAINFO}
+  ]
 
 (***************************************************************************)
 (* Filecoin Application                                                    *)
@@ -274,14 +303,9 @@ variables
     (* The declaration of a sector at the end of a method call.            *)
     (***********************************************************************)
 
-  minerSectorIDs \in {{}, {"SectorID1"}},
+  PreCommittedSectors \in AllValidPreCommittedSectors,
     (***********************************************************************)
     (* SectorIDs currently in use.                                         *)
-    (***********************************************************************)
-
-  minerSectorIDsNext = {},
-    (***********************************************************************)
-    (* Updated set of SectorIDs at the end of a method call.               *)
     (***********************************************************************)
 
   failedPoSts \in 0..2,
@@ -309,6 +333,22 @@ variables
     (* The last method called.                                             *)
     (***********************************************************************)
 
+define
+  SectorIDs ==
+    LET 
+      SectorID1 ==
+        IF
+          PreCommittedSectors.SectorID1.Info.SectorNumber = "SectorID1"
+        THEN {"SectorID1"}
+        ELSE {}
+      SectorID2 ==
+        IF
+          PreCommittedSectors.SectorID2.Info.SectorNumber = "SectorID2"
+        THEN {"SectorID2"}
+        ELSE {}
+    IN SectorID1 \union SectorID2
+end define;
+
 (***************************************************************************)
 (* Blockchain                                                              *)
 (* A miner can take (in this model), one action per epoch.                 *)
@@ -325,10 +365,15 @@ begin
             methodCalled := "PreCommit";
             if sectorState = clear /\ declaration = NULLDECL then
               \* Mark sector as committed
-              with sectorInfo \in SectorPreCommitOnChainInfo do
-                if ValidPreCommitOnChainInfo(sectorInfo, minerSectorIDs) then
+              with sectorInfo \in SectorPreCommitInfo do
+                if /\ ValidSectorPreCommitInfo(sectorInfo)
+                  /\ sectorInfo.SectorNumber \notin SectorIDs then
                   sectorStateNext := precommit;
-                  minerSectorIDsNext := minerSectorIDs \union {sectorInfo.SectorNumber};
+                  PreCommittedSectors[sectorInfo.SectorNumber] := [
+                    Info |-> sectorInfo,
+                    PreCommitDeposit |-> PreCommitDeposit,
+                    PreCommitEpoch |-> "Current"
+                  ];
                 else
                   methodError := "invalid precommit"
                 end if;
@@ -431,10 +476,6 @@ begin
           if sectorStateNext /= NULLSTATE then
             sectorState := sectorStateNext;
           end if;
-          if minerSectorIDsNext /= {} then
-            minerSectorIDs := minerSectorIDsNext;
-            minerSectorIDsNext := {};
-          end if;
           if methodCalled = "WindowPoSt" then
             declaration := NULLDECL;
           else
@@ -491,17 +532,19 @@ MessageInvariants ==
     \/ InvalidMessageHaveError
     \/ BadInputs
 
-SectorIDInvariants == LET
+SectorIDInvariants == 
   (*************************************************************************)
   (* SectorIDs can only be assigned if not currently in use                *)
   (*************************************************************************)
-    NewId == Cardinality(minerSectorIDsNext) > Cardinality(minerSectorIDs)
-    IdRemoved == Cardinality(minerSectorIDsNext) < Cardinality(minerSectorIDs)
+    \* NewId == Cardinality(minerSectorIDsNext) > Cardinality(minerSectorIDs)
+    \* IdRemoved == Cardinality(minerSectorIDsNext) < Cardinality(minerSectorIDs)
 
-    NewIdOnPrecommitOnly ==
-      MessageSucceeded /\ methodCalled = "PreCommit" <=> NewId
+    \* NewIdOnPreCommitOnly ==
+    \*   MessageSucceeded /\ methodCalled = "PreCommit" <=> NewId
+  pc["miner"] = "PreCommit" => PreCommittedSectors = PreCommittedSectors' 
 
-  IN NewIdOnPrecommitOnly
+THEOREM 
+
 
 PenaltiesInvariants ==
   (*************************************************************************)
