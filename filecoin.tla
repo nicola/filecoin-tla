@@ -155,12 +155,6 @@ Transitions ==
 (* Faults                                                                  *)
 (***************************************************************************)
 
-RecoverFault(state, decl) ==
-  state = faulty /\ decl = recovered
-
-DetectedFault(state, decl) ==
-  state = active /\ decl = NULLDECL
-
 SkippedFault(state, decl, missedPoSt) == 
   (*************************************************************************)
   (* A SkippedFault occurs when an active sector or a recovered sector     *)
