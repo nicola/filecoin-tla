@@ -83,19 +83,22 @@ Transitions ==
     (* WindowPoSt: Honest case                                             *)
     (* An active sector remains active.                                    *)
     (***********************************************************************)
-    T("WindowPoSt", active, active, NULLDECL, NULLDECL, ZERO),
+    \* T("WindowPoSt", active, active, NULLDECL, NULLDECL, ZERO),
+    \* T("ProvingPeriod", active, active, NULLDECL, NULLDECL, ZERO),
     
     (***********************************************************************)
     (* WindowPoSt: Continued Fault                                         *)
     (* A faulty sector remains faulty in absence of declarations.          *)
     (***********************************************************************)
     T("WindowPoSt", faulty, faulty, NULLDECL, NULLDECL, FF),
+    T("ProvingPeriod", faulty, faulty, NULLDECL, NULLDECL, FF),
 
     (***********************************************************************)
     (* WindowPoSt: New Declared Fault                                      *)
     (* An active sector that is declared faulted becomes faulty.           *)
     (***********************************************************************)
     T("WindowPoSt", active, faulty, faulted, NULLDECL, FF),
+    T("ProvingPeriod", active, faulty, faulted, NULLDECL, FF),
 
     (***********************************************************************)
     (* WindowPoSt: Failed Recovery Declared Fault                          *)
@@ -103,12 +106,14 @@ Transitions ==
     (* faulted becomes faulty                                              *)
     (***********************************************************************)
     T("WindowPoSt", faulty, faulty, faulted, NULLDECL, FF),
+    T("ProvingPeriod", faulty, faulty, faulted, NULLDECL, FF),
 
     (***********************************************************************)
     (* WindowPoSt: Active Skipped Faults                                   *)
     (* An active sector that is not declared faulted becomes faulty.       *)
     (***********************************************************************)
     T("WindowPoSt", active, faulty, NULLDECL, NULLDECL, SP),
+    T("ProvingPeriod", active, faulty, NULLDECL, NULLDECL, SP),
 
     (***********************************************************************)
     (* WindowPoSt: Recovered Skipped Fault                                 *)
@@ -116,13 +121,13 @@ Transitions ==
     (* becomes faulty.                                                     *)
     (***********************************************************************)
     T("WindowPoSt", faulty, faulty, recovered, NULLDECL, SP),
+    T("ProvingPeriod", faulty, faulty, recovered, NULLDECL, SP),
 
     (***********************************************************************)
     (* WindowPoSt: Recovered Sector                                        *)
     (* A faulty sector declared as recovered becomes active.               *)
     (***********************************************************************)
     T("WindowPoSt", faulty, active, recovered, NULLDECL, ZERO)
-
   }
   \union
   (*************************************************************************)
@@ -137,14 +142,8 @@ Transitions ==
     penalties: {TF}
   ]
   \union 
-  (*************************************************************************)
-  (* WindowPoSt: Termination Faults                                        *)
-  (* Continued Fault (Termination Fault version)                           *)
-  (* Recovered Skipped Fault (Termination Fault version)                   *)
-  (* Failed Recovery Declared Fault (Termination fault)                    *)
-  (*************************************************************************)
   [
-    method: {"WindowPoSt"},
+    method: {"ProvingPeriod"},
     state: {faulty},
     stateNext: {done},
     decl: {NULLDECL, recovered, faulted},
@@ -246,33 +245,43 @@ begin
       TerminateSector:
         if /\ sectorState \in {faulty, active}
            /\ declaration \in {faulted, recovered, NULLDECL} then
-          sectorState := done
-          || penalties := TF;
+          sectorState := done;
+          penalties := TF;
         end if;
     or
       WindowPoSt:
         if \/ (sectorState = active /\ declaration \in {NULLDECL, faulted})
            \/ (sectorState = faulty) then
-          
+
           with skippedFault \in BOOLEAN do
             if RecoveredSector(sectorState, declaration, skippedFault) then
               sectorState := active;
             elsif SkippedFault(sectorState, declaration, skippedFault) then
-              if sectorState = faulty /\ failedPoSt = 13 then
-                sectorState := done;
-                penalties := TF; 
-              else
-                sectorState := faulty;
-                penalties := SP;
-              end if;
+              sectorState := faulty;
+              penalties := SP;
             elsif DeclaredFault(sectorState, declaration) then
-              if sectorState = faulty /\ failedPoSt = 13 then
-                sectorState := done;
-                penalties := TF;
-              else
-                sectorState := faulty;
-                penalties := FF;
-              end if;
+              sectorState := faulty;
+              penalties := FF;
+            end if;
+            declaration := NULLDECL;
+          end with;
+
+        end if;
+    or
+      ProvingPeriod:
+        if \/ (sectorState = active /\ declaration \in {NULLDECL, faulted})
+           \/ (sectorState = faulty) then
+
+          with detectedFault \in BOOLEAN do
+            if failedPoSt = 13 /\ sectorState = faulty then
+              sectorState := done;
+              penalties := TF;
+            elsif SkippedFault(sectorState, declaration, detectedFault) then
+              sectorState := faulty;
+              penalties := SP;
+            elsif DeclaredFault(sectorState, declaration) then
+              sectorState := faulty;
+              penalties := FF;
             end if;
             declaration := NULLDECL;
           end with;
@@ -306,7 +315,7 @@ PenaltiesInvariants ==
       LET
         DeclaredFaultsCandidates == 
           {s \in Transitions:
-            /\ s.method = "WindowPoSt"
+            /\ s.method \in {"WindowPoSt", "ProvingPeriod"}
             /\ s.stateNext /= done
             /\ DeclaredFault(s.state, s.decl)
             /\ s.penalties = FF}
@@ -320,7 +329,7 @@ PenaltiesInvariants ==
       LET 
         TerminationCandidates ==
           {t \in Transitions:
-            /\ \/ t.method = "WindowPoSt" /\ t.stateNext = done
+            /\ \/ t.method = "ProvingPeriod" /\ t.stateNext = done
                \/ t.method = "TerminateSector"
             /\ t.penalties = TF}
       IN TerminationCandidates = {s \in Transitions : s.penalties = TF }
@@ -333,7 +342,7 @@ PenaltiesInvariants ==
       LET
         SkippedFaultsCandidates == 
           {t \in Transitions: 
-            /\ t.method = "WindowPoSt"
+            /\ t.method \in {"WindowPoSt", "ProvingPeriod"}
             /\ t.stateNext /= done
             /\ SkippedFault(t.state, t.decl, TRUE)
             /\ t.penalties = SP}
