@@ -2,15 +2,14 @@
 
 EXTENDS TLC, Integers
 
-terminated == "terminated"
-active == "active"
-precommit == "precommit"
-faulty == "faulty"
 clear == "clear"
+precommit == "precommit"
+unproven == "unproven"
+active == "active"
+faulty == "faulty"
+recovering == "recovering"
+terminated == "terminated"
 
-faulted == "faulted"
-recovered == "recovered"
-NULLDECL == "null declaration"
 methods == {"PreCommit", "ProveCommit", "DeclareFault", "DeclareRecovery", "WindowPoSt", "TerminateSector"}
 
 ZERO == "zero"
@@ -18,7 +17,7 @@ TF == "TF"
 FF == "FF"
 SP == "SP"
 
-T(method, state, stateNext, decl, declNext, pen) ==
+T(method, state, stateNext, pen) ==
   (*************************************************************************)
   (* Utility that packs a list into a struct.                              *)
   (*************************************************************************)
@@ -26,8 +25,6 @@ T(method, state, stateNext, decl, declNext, pen) ==
     method |-> method,
     state |-> state,
     stateNext |-> stateNext,
-    decl |-> decl,
-    declNext |-> declNext,
     penalties |-> pen
   ]
 
@@ -35,14 +32,10 @@ T(method, state, stateNext, decl, declNext, pen) ==
 (* StorageMiner Actor                                                      *)
 (***************************************************************************)
 
-SectorStates == {clear, precommit, active, faulty, terminated}
+SectorStates ==
+    {clear, precommit, unproven, active, faulty, recovering, terminated}
   (*************************************************************************)
   (* The set of all sector states.                                         *)
-  (*************************************************************************)
-
-Declarations == {recovered, faulted}
-  (*************************************************************************)
-  (* The set of all declarations that are considered during WindowPoSt     *)
   (*************************************************************************)
 
 Transitions ==
@@ -51,88 +44,83 @@ Transitions ==
   (* - `method`: the Actor method called                                   *)
   (* - `state`: the sector state at the beginning of the call              *)
   (* - `stateNext`: the sector state at the end of the call                *)
-  (* - `decl`: the state of the declaration of a sector at the beginning   *)
-  (*    of the call                                                        *)
-  (* - `declNext`: the state of the declaration at the end of the call     *)
   (* - `penalties`: the penalty paid by the end of the call                *)
   (*************************************************************************)
   {
     (***********************************************************************)
     (* Precommit: A clear sector is precommitted (clear ->  precommit).    *)
     (***********************************************************************)
-    T("PreCommit", clear, precommit, NULLDECL, NULLDECL, ZERO),
+    T("PreCommit", clear, precommit, ZERO),
     
     (***********************************************************************)
     (* Commit: A precommitted sector becomes active (precommit -> active). *)
     (***********************************************************************)
-    T("Commit", precommit, active, NULLDECL, NULLDECL, ZERO),
+    T("Commit", precommit, active, ZERO),
     
     (***********************************************************************)
     (* DeclareFault: New Declared Fault                                    *)
     (* An active sector is declared faulted.                               *)
     (***********************************************************************)
-    T("DeclareFault", active, active, NULLDECL, faulted, ZERO),
+    T("DeclareFault", active, faulty, ZERO),
 
     (***********************************************************************)
     (* DeclareFault: Failed Recovery Declared Fault                        *)
     (* A faulty sector that is declared as recovered is now redeclared as  *)
     (* faulty.                                                             *)
     (***********************************************************************)
-    T("DeclareFault", faulty, faulty, recovered, faulted, ZERO),
+    T("DeclareFault", recovering, faulty, ZERO),
 
-    T("DeclareRecovery", faulty, faulty, NULLDECL, recovered, ZERO),
-    T("DeclareRecovery", faulty, faulty, faulted, recovered, ZERO),
-    T("DeclareRecovery", active, active, faulted, recovered, ZERO),
+    T("DeclareRecovery", faulty, recovering, ZERO),
 
     (***********************************************************************)
     (* WindowPoSt: Honest case                                             *)
     (* An active sector remains active.                                    *)
     (***********************************************************************)
-    T("WindowPoSt", active, active, NULLDECL, NULLDECL, ZERO),
-    T("ProvingDeadline", active, active, NULLDECL, NULLDECL, ZERO),
+    T("WindowPoSt", active, active, ZERO),
+    T("ProvingDeadline", active, active, ZERO),
     
     (***********************************************************************)
     (* WindowPoSt: Continued Fault                                         *)
     (* A faulty sector remains faulty in absence of declarations.          *)
     (***********************************************************************)
-    T("WindowPoSt", faulty, faulty, NULLDECL, NULLDECL, FF),
-    T("ProvingDeadline", faulty, faulty, NULLDECL, NULLDECL, FF),
+    T("WindowPoSt", faulty, faulty, FF),
+    T("ProvingDeadline", faulty, faulty, FF),
 
     (***********************************************************************)
     (* WindowPoSt: New Declared Fault                                      *)
     (* An active sector that is declared faulted becomes faulty.           *)
     (***********************************************************************)
-    T("WindowPoSt", active, faulty, faulted, NULLDECL, FF),
-    T("ProvingDeadline", active, faulty, faulted, NULLDECL, FF),
+    \* T("WindowPoSt", faulty, faulty, FF),
+    \* T("ProvingDeadline", faulty, faulty, FF),
 
     (***********************************************************************)
     (* WindowPoSt: Failed Recovery Declared Fault                          *)
     (* A faulty sector declared as recovered and then declared again as    *)
     (* faulted becomes faulty                                              *)
     (***********************************************************************)
-    T("WindowPoSt", faulty, faulty, faulted, NULLDECL, FF),
-    T("ProvingDeadline", faulty, faulty, faulted, NULLDECL, FF),
+    \* T("WindowPoSt", faulty, faulty, faulted, NULLDECL, FF),
+    \* T("ProvingDeadline", faulty, faulty, faulted, NULLDECL, FF),
 
     (***********************************************************************)
     (* WindowPoSt: Active Skipped Faults                                   *)
     (* An active sector that is not declared faulted becomes faulty.       *)
     (***********************************************************************)
-    T("WindowPoSt", active, faulty, NULLDECL, NULLDECL, SP),
-    T("ProvingDeadline", active, faulty, NULLDECL, NULLDECL, SP),
+    T("WindowPoSt", active, faulty, SP),
+    T("ProvingDeadline", active, faulty, SP),
 
     (***********************************************************************)
     (* WindowPoSt: Recovered Skipped Fault                                 *)
     (* A faulty sector is declared recovered and then fails the proof      *)
     (* becomes faulty.                                                     *)
     (***********************************************************************)
-    T("WindowPoSt", faulty, faulty, recovered, NULLDECL, SP),
-    T("ProvingDeadline", faulty, faulty, recovered, NULLDECL, SP),
+    T("WindowPoSt", recovering, faulty, SP),
+    T("ProvingDeadline", recovering, faulty, SP),
 
     (***********************************************************************)
     (* WindowPoSt: Recovered Sector                                        *)
     (* A faulty sector declared as recovered becomes active.               *)
     (***********************************************************************)
-    T("WindowPoSt", faulty, active, recovered, NULLDECL, FF)
+    T("WindowPoSt", recovering, active, FF)
   }
   \union
   (*************************************************************************)
@@ -140,73 +128,51 @@ Transitions ==
   (*************************************************************************)
   [
     method: {"TerminateSector"},
-    state: {faulty, active},
+    state: {faulty, active, recovering},
     stateNext: {terminated},
-    decl: {faulted, recovered, NULLDECL},
-    declNext: {NULLDECL},
     penalties: {TF}
   ]
   \union 
   [
     method: {"ProvingDeadline"},
-    state: {faulty},
+    state: {faulty, recovering},
     stateNext: {terminated},
-    decl: {NULLDECL, recovered, faulted},
-    declNext: {NULLDECL},
     penalties: {TF}
   ]
 
 TransitionsState ==
-  {[state |-> x.state, decl |-> x.decl]: x \in Transitions}
+  {[state |-> x.state]: x \in Transitions}
 TransitionsStateNext ==
-  {[state |-> x.stateNext, decl |-> x.declNext]: x \in Transitions}
+  {[state |-> x.stateNext]: x \in Transitions}
 ValidStates == TransitionsState \union TransitionsStateNext
 
 (***************************************************************************)
 (* Faults                                                                  *)
 (***************************************************************************)
 
-SkippedFault(state, decl, missedPoSt) == 
+SkippedFault(state, missedPoSt) == 
   (*************************************************************************)
   (* A SkippedFault occurs when an active sector or a recovered sector     *)
   (* fails to be proven at WindowPoSt                                      *)
   (*************************************************************************)
   LET 
-    ActiveSector == (state = active /\ decl = NULLDECL)
-    RecoverSector == (state = faulty /\ decl = recovered)
+    ActiveSector == (state = active)
+    RecoverSector == (state = recovering)
     ExpectingProof == ActiveSector \/ RecoverSector
   IN ExpectingProof /\ missedPoSt
 
-DeclaredFault(state, decl) == 
+DeclaredFault(state) == 
   (*************************************************************************)
   (* A DeclaredFault occurs when a sector is known to be faulty.           *)
   (*************************************************************************)
-  LET 
-    FailedRecoveryDeclaredFault == state = faulty /\ decl = faulted
-      (*********************************************************************)
-      (* A faulty sector is still declared faulty, after being recovered.  *)
-      (*********************************************************************)
+  state = faulty 
 
-    ContinuedDeclaredFault == state = faulty /\ decl = NULLDECL
-      (*********************************************************************)
-      (* A sector is faulty and continues being so.                        *)
-      (*********************************************************************)
-
-    NewDeclaredFault == state = active /\ decl = faulted
-      (*********************************************************************)
-      (* A sector is active and declared as faulty.                        *)
-      (*********************************************************************)
-
-  IN \/ FailedRecoveryDeclaredFault
-     \/ ContinuedDeclaredFault
-     \/ NewDeclaredFault
-
-RecoveredSector(state, decl, missedPost) ==
+RecoveredSector(state, missedPost) ==
   (*************************************************************************)
   (* A RecoveredSector occurs when a sector is known to be faulty and      *) 
   (* declared recovered (and the subsequent WindowPoSt is not failed.      *)
   (*************************************************************************)
-  state = faulty /\ decl = recovered /\ ~missedPost
+  state = recovering /\ ~missedPost
 
 (***************************************************************************)
 (* Filecoin Application                                                    *)
@@ -219,11 +185,6 @@ variables
   sectorState = st.state, \* \in SectorStates,
     (***********************************************************************)
     (* The state of a sector at the beginning of a method call.            *)
-    (***********************************************************************)
-
-  declaration = st.decl, \* \in Declarations \union {NULLDECL},
-    (***********************************************************************)
-    (* The declaration of a sector at the beginning of a method call.      *)
     (***********************************************************************)
 
   penalties = ZERO,
@@ -241,39 +202,34 @@ begin
     either
       PreCommit:
         if /\ sectorState = clear
-           /\ declaration = NULLDECL
            /\ collateral >= 0 then
           sectorState := precommit;
         end if;
     or
       DeclareRecovery:
-        if /\ \/ sectorState = active /\ declaration = faulted
-              \/ sectorState = faulty /\ declaration = faulted
+        if /\ sectorState = faulty 
            /\ collateral >= 0
             then
-          declaration := recovered;
+          sectorState := recovering;
         end if;
     or
       DeclareFault:
-        if /\ \/ (sectorState = active /\ declaration = NULLDECL)
-              \/ (sectorState = faulty /\ declaration = recovered)
+        if /\ \/ sectorState = active
+              \/ sectorState = recovering
            /\ collateral >= 1 then
-            declaration := faulted;
+            sectorState := faulty;
         end if;
     or
       Commit:
         if /\ sectorState = precommit
-           /\ declaration = NULLDECL
            /\ collateral >= 1 then
           sectorState := active;
         end if;
     or
       TerminateSector:
-        if /\ sectorState \in {faulty, active}
-           /\ declaration \in {faulted, recovered, NULLDECL}
+        if /\ sectorState \in {faulty, active} 
            /\ collateral >= 1 then
           sectorState := terminated;
-          declaration := NULLDECL;
           penalties := TF;
 
           \* (* the collateral that can be removed is at most the total.         *)
@@ -285,30 +241,29 @@ begin
         end if;
     or
       WindowPoSt:
-        if \/ (sectorState = active /\ declaration \in {NULLDECL, faulted})
+        if \/ (sectorState = active)
            \/ (sectorState = faulty) then
 
           with skippedFault \in BOOLEAN do
-            if RecoveredSector(sectorState, declaration, skippedFault) then
+            if RecoveredSector(sectorState, skippedFault) then
               sectorState := active;
               penalties := FF;
               collateral := collateral - 1;
-            elsif SkippedFault(sectorState, declaration, skippedFault) then
+            elsif SkippedFault(sectorState, skippedFault) then
               sectorState := faulty;
               penalties := SP;
               collateral := collateral - 2;
-            elsif DeclaredFault(sectorState, declaration) then
+            elsif DeclaredFault(sectorState) then
               sectorState := faulty;
               penalties := FF;
               collateral := collateral - 1;
             end if;
-            declaration := NULLDECL;
           end with;
 
         end if;
     or
       ProvingDeadline:
-        if \/ (sectorState = active /\ declaration \in {NULLDECL, faulted})
+        if \/ (sectorState = active)
            \/ (sectorState = faulty) then
 
           with missedPoSt \in BOOLEAN do
@@ -316,18 +271,17 @@ begin
               sectorState := terminated;
               penalties := TF;
               collateral := collateral - 2
-            elsif \/ RecoveredSector(sectorState, declaration, missedPoSt)
-                  \/ SkippedFault(sectorState, declaration, TRUE) then
+            elsif \/ RecoveredSector(sectorState, missedPoSt)
+                  \/ SkippedFault(sectorState, TRUE) then
               sectorState := faulty;
               penalties := SP;
               collateral := collateral - 2
-            elsif DeclaredFault(sectorState, declaration) then
+            elsif DeclaredFault(sectorState) then
               sectorState := faulty;
               penalties := FF;
               collateral := collateral - 1
             end if;
           end with;
-          declaration := NULLDECL;
         end if;
     end either;
 
@@ -336,7 +290,7 @@ end algorithm; *)
 
 \* END TRANSLATION
 
-CurrState == T(pc, sectorState, sectorState', declaration, declaration', penalties') 
+CurrState == T(pc, sectorState, sectorState', penalties') 
 
 ValidMessage == CurrState \in Transitions
 
@@ -344,7 +298,7 @@ ValidMessageProperty ==
   (*************************************************************************)
   (* Messages must valid transitions or must trigger errors.               *)
   (*************************************************************************)
-  [][ValidMessage]_<<sectorState, declaration, penalties>>
+  [][ValidMessage]_<<sectorState, penalties>>
 
 TransitionsInvariants ==
   (*************************************************************************)
@@ -352,9 +306,9 @@ TransitionsInvariants ==
   (*************************************************************************)
   LET
     Initial ==
-      TransitionsState \ {[state |-> clear, decl |-> NULLDECL]} 
+      TransitionsState \ {[state |-> clear]} 
     Final ==
-      TransitionsStateNext \ {[state |-> terminated, decl |-> NULLDECL]} 
+      TransitionsStateNext \ {[state |-> terminated]} 
   IN Initial = Final
 
 ASSUME TransitionsInvariants 
@@ -374,8 +328,8 @@ PenaltiesInvariants ==
           {s \in Transitions:
             /\ s.method \in {"WindowPoSt", "ProvingDeadline"}
             /\ s.stateNext /= terminated
-            /\ \/ DeclaredFault(s.state, s.decl)
-               \/ RecoveredSector(s.state, s.decl, FALSE)
+            /\ \/ DeclaredFault(s.state)
+               \/ RecoveredSector(s.state, FALSE)
             /\ s.penalties = FF}
       IN DeclaredFaultsCandidates = {s \in Transitions : s.penalties = FF}
 
@@ -402,7 +356,7 @@ PenaltiesInvariants ==
           {t \in Transitions: 
             /\ t.method \in {"WindowPoSt", "ProvingDeadline"}
             /\ t.stateNext /= terminated
-            /\ SkippedFault(t.state, t.decl, TRUE)
+            /\ SkippedFault(t.state, TRUE)
             /\ t.penalties = SP}
       IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
   IN DeclaredFaultsAndRecoveredPayFF
