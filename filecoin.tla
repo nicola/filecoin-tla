@@ -2,7 +2,7 @@
 
 EXTENDS TLC, Integers
 
-done == "done"
+terminated == "terminated"
 active == "active"
 precommit == "precommit"
 faulty == "faulty"
@@ -35,7 +35,7 @@ T(method, state, stateNext, decl, declNext, pen) ==
 (* StorageMiner Actor                                                      *)
 (***************************************************************************)
 
-SectorStates == {clear, precommit, active, faulty, done}
+SectorStates == {clear, precommit, active, faulty, terminated}
   (*************************************************************************)
   (* The set of all sector states.                                         *)
   (*************************************************************************)
@@ -141,7 +141,7 @@ Transitions ==
   [
     method: {"TerminateSector"},
     state: {faulty, active},
-    stateNext: {done},
+    stateNext: {terminated},
     decl: {faulted, recovered, NULLDECL},
     declNext: {NULLDECL},
     penalties: {TF}
@@ -150,7 +150,7 @@ Transitions ==
   [
     method: {"ProvingDeadline"},
     state: {faulty},
-    stateNext: {done},
+    stateNext: {terminated},
     decl: {NULLDECL, recovered, faulted},
     declNext: {NULLDECL},
     penalties: {TF}
@@ -214,7 +214,7 @@ RecoveredSector(state, decl, missedPost) ==
 (*--algorithm filecoin
 
 variables
-  collateral \in {0, 1, 2},
+  collateral \in {-1, 0, 1},
   st \in ValidStates,
   sectorState = st.state, \* \in SectorStates,
     (***********************************************************************)
@@ -240,34 +240,39 @@ begin
   Block:
     either
       PreCommit:
-        if sectorState = clear /\ declaration = NULLDECL then
+        if /\ sectorState = clear
+           /\ declaration = NULLDECL
+           /\ collateral >= 0 then
           sectorState := precommit;
         end if;
     or
       DeclareRecovery:
-        if \/ sectorState = active /\ declaration = faulted
-           \/ sectorState = faulty /\ declaration = faulted then
+        if /\ \/ sectorState = active /\ declaration = faulted
+              \/ sectorState = faulty /\ declaration = faulted
+           /\ collateral >= 0
+            then
           declaration := recovered;
         end if;
     or
       DeclareFault:
-        if \/ (sectorState = active /\ declaration = NULLDECL)
-           \/ (sectorState = faulty /\ declaration = recovered) then
-          if collateral > 1 then
+        if /\ \/ (sectorState = active /\ declaration = NULLDECL)
+              \/ (sectorState = faulty /\ declaration = recovered)
+           /\ collateral >= 1 then
             declaration := faulted;
-          end if;
         end if;
     or
       Commit:
-        if sectorState = precommit /\ declaration = NULLDECL then
+        if /\ sectorState = precommit
+           /\ declaration = NULLDECL
+           /\ collateral >= 1 then
           sectorState := active;
         end if;
     or
       TerminateSector:
         if /\ sectorState \in {faulty, active}
            /\ declaration \in {faulted, recovered, NULLDECL}
-           /\ collateral > 2 then
-          sectorState := done;
+           /\ collateral >= 1 then
+          sectorState := terminated;
           declaration := NULLDECL;
           penalties := TF;
 
@@ -308,7 +313,7 @@ begin
 
           with missedPoSt \in BOOLEAN do
             if failedPoSt = 13 /\ sectorState = faulty then
-              sectorState := done;
+              sectorState := terminated;
               penalties := TF;
               collateral := collateral - 2
             elsif \/ RecoveredSector(sectorState, declaration, missedPoSt)
@@ -349,7 +354,7 @@ TransitionsInvariants ==
     Initial ==
       TransitionsState \ {[state |-> clear, decl |-> NULLDECL]} 
     Final ==
-      TransitionsStateNext \ {[state |-> done, decl |-> NULLDECL]} 
+      TransitionsStateNext \ {[state |-> terminated, decl |-> NULLDECL]} 
   IN Initial = Final
 
 ASSUME TransitionsInvariants 
@@ -368,7 +373,7 @@ PenaltiesInvariants ==
         DeclaredFaultsCandidates == 
           {s \in Transitions:
             /\ s.method \in {"WindowPoSt", "ProvingDeadline"}
-            /\ s.stateNext /= done
+            /\ s.stateNext /= terminated
             /\ \/ DeclaredFault(s.state, s.decl)
                \/ RecoveredSector(s.state, s.decl, FALSE)
             /\ s.penalties = FF}
@@ -382,7 +387,7 @@ PenaltiesInvariants ==
       LET 
         TerminationCandidates ==
           {t \in Transitions:
-            /\ \/ t.method = "ProvingDeadline" /\ t.stateNext = done
+            /\ \/ t.method = "ProvingDeadline" /\ t.stateNext = terminated
                \/ t.method = "TerminateSector"
             /\ t.penalties = TF}
       IN TerminationCandidates = {s \in Transitions : s.penalties = TF }
@@ -396,7 +401,7 @@ PenaltiesInvariants ==
         SkippedFaultsCandidates == 
           {t \in Transitions: 
             /\ t.method \in {"WindowPoSt", "ProvingDeadline"}
-            /\ t.stateNext /= done
+            /\ t.stateNext /= terminated
             /\ SkippedFault(t.state, t.decl, TRUE)
             /\ t.penalties = SP}
       IN SkippedFaultsCandidates = {s \in Transitions : s.penalties = SP}
@@ -407,6 +412,8 @@ PenaltiesInvariants ==
 ASSUME PenaltiesInvariants
 
 CollateralInvariants ==
-  pc = "Done" => collateral >= 0
+  /\ pc \in {"ProveCommit", "ProveCommit"} => collateral >= 0
+  /\ pc \in {"DeclareFault", "DeclareRecovery"} => collateral >= 1
+  /\ pc \in {"TerminateSector"} => collateral >= 2
 
 =============================================================================
